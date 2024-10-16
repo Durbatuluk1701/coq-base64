@@ -2,11 +2,12 @@
   This is an implementation of the Base64 encoding and decoding algorithm in Coq.
 
   Specifically, this will abide by RFC4648, which is the (current) standard for Base64 encoding and decoding.
+
+  However, there is one main divergence from the standard, which is that we will REQUIRE padding to be used in the encoding/decoding.
 *)
 Require Import Coq.Strings.String Coq.Lists.List.
 Import ListNotations.
 Open Scope string_scope.
-Require Import Lia.
 
 (* Some Ltac *)
 Ltac break_match :=
@@ -204,8 +205,7 @@ Ltac dec_encode :=
   intros v;
   destruct v;
   simpl in *;
-  repeat (break_match; simpl in *; try simple congruence 3; eauto;
-    try lia); eauto.
+  repeat (break_match; simpl in *; try simple congruence 3; eauto); eauto.
 
 Global Instance encodable_sextet_nat : Encodable Sextet nat.
 eapply Build_Encodable with 
@@ -219,7 +219,7 @@ Lemma Sextet_to_nat_lt_64 : forall p,
 Proof.
   induction p; simpl in *;
   repeat match goal with
-  | b : bool |- _ => destruct b; try lia
+  | b : bool |- _ => destruct b; try (repeat econstructor; fail)
   end.
 Qed.
 
@@ -244,17 +244,16 @@ Notation "' pat <- a ;; b" :=
   | Some pat => b
   | None => None
   end) (right associativity, at level 60, pat pattern). *)
+Section Base64.
 
-Module Base64.
-
-  Parameter b : Base64Options.
+  Variable b : Base64Options.
 
   Fixpoint string_get_ascii_safe (n : nat) 
     (s : { s & n < String.length s }) : Ascii.ascii.
     (* `{HL : n < String.length s} : Ascii.ascii. *)
     destruct s eqn:E; simpl in *.
     destruct x eqn:E1; simpl in *.
-    - lia.
+    - edestruct PeanoNat.Nat.nlt_0_r; eauto.
     - destruct n.
       * (* n = 0 *) exact a.
       * (* n = S n' *)
@@ -262,8 +261,6 @@ Module Base64.
         econstructor.
         eapply (PeanoNat.lt_S_n _ _ l).
   Defined.
-
-  Print List.map.
 
   Definition map_with_invariant {A B : Type} (P : A -> Prop) 
       (f : { a & P a} -> B) :
@@ -305,7 +302,7 @@ Module Base64.
     eapply x.
     eapply (existT) with (x := "=");
     simpl in *.
-    lia.
+    econstructor.
   Defined.
 
   Definition Base64Padding : Ascii.ascii := 
@@ -336,7 +333,7 @@ Module Base64.
   Fixpoint nth_safe {A : Type} (n : nat) (l : list A)
       `{HL : n < List.length l} : A.
     destruct l eqn:E; simpl in *.
-    - lia.
+    - edestruct PeanoNat.Nat.nlt_0_r; eauto.
     - destruct n.
       * (* n = 0 *) exact a.
       * (* n = S n' *)
@@ -353,7 +350,7 @@ Module Base64.
   Lemma in_nth_safe : forall A (l : list A) n `{HL : n < List.length l},
     In (@nth_safe _ n l HL) l.
   Proof.
-    induction l; simpl in *; intuition; try lia.
+    induction l; simpl in *; intuition; try (inversion HL; fail).
     destruct n; eauto.
   Qed.
 
@@ -397,8 +394,8 @@ Module Base64.
     NoDup ((@nth_safe _ n l HL) :: l) ->
     False.
   Proof.
-    induction l; simpl in *; intros; try lia.
-    destruct n; simpl in *; eauto; try lia.
+    induction l; simpl in *; intros; try (inversion HL; fail).
+    destruct n; simpl in *; eauto.
     - inversion H0; subst; destruct H3; simpl in *; eauto.
     - pose proof (NoDup_remove_1 [@nth_safe _ n l (PeanoNat.lt_S_n _ _ HL)] l a);
       simpl in *; eauto.
@@ -408,7 +405,7 @@ Module Base64.
     NoDup l -> 
     index_of (@nth_safe _ n l HL) l = Some n.
   Proof.
-    induction l; intros; simpl in *; try lia.
+    induction l; intros; simpl in *; try (inversion HL; fail).
     destruct n; simpl in *.
     - rewrite eqb_refl; eauto.
     - erewrite IHl.
@@ -539,12 +536,12 @@ Module Base64.
     : StrictEncodable Ascii.ascii (Sextet * Sextet).
     eapply Build_StrictEncodable with 
       (strict_encode := fun a =>
-        let '(Ascii.Ascii b0 b1 b2 b3 b4 b5 b6 b7) := a in
+        let '(Ascii.Ascii b7 b6 b5 b4 b3 b2 b1 b0) := a in
         ((sextet b0 b1 b2 b3 b4 b5), (sextet b6 b7 false false false false)))
       (strict_decode := fun '(p1,p2) =>
         let '(sextet b0 b1 b2 b3 b4 b5) := p1 in
         let '(sextet b6 b7 _ _ _ _) := p2 in
-        (Ascii.Ascii b0 b1 b2 b3 b4 b5 b6 b7)).
+        (Ascii.Ascii b7 b6 b5 b4 b3 b2 b1 b0)).
     dec_encode.
   Defined.
 
@@ -552,15 +549,15 @@ Module Base64.
     : StrictEncodable (Ascii.ascii * Ascii.ascii) (Sextet * Sextet * Sextet).
   eapply Build_StrictEncodable with
     (strict_encode := (fun '(a1,a2) => 
-      let '(Ascii.Ascii b0 b1 b2 b3 b4 b5 b6 b7) := a1 in
-      let '(Ascii.Ascii b8 b9 b10 b11 b12 b13 b14 b15) := a2 in
+      let '(Ascii.Ascii b7 b6 b5 b4 b3 b2 b1 b0) := a1 in
+      let '(Ascii.Ascii b15 b14 b13 b12 b11 b10 b9 b8) := a2 in
       ((sextet b0 b1 b2 b3 b4 b5), (sextet b6 b7 b8 b9 b10 b11), (sextet b12 b13 b14 b15 false false))))
     (strict_decode := (fun '(p1,p2,p3) => 
       let '(sextet b0 b1 b2 b3 b4 b5) := p1 in
       let '(sextet b6 b7 b8 b9 b10 b11) := p2 in
       let '(sextet b12 b13 b14 b15 _ _) := p3 in
-      (Ascii.Ascii b0 b1 b2 b3 b4 b5 b6 b7, 
-        Ascii.Ascii b8 b9 b10 b11 b12 b13 b14 b15))).
+      (Ascii.Ascii b7 b6 b5 b4 b3 b2 b1 b0, 
+        Ascii.Ascii b15 b14 b13 b12 b11 b10 b9 b8))).
     dec_encode.
   Defined.
 
@@ -568,18 +565,18 @@ Module Base64.
     : StrictEncodable (Ascii.ascii * Ascii.ascii * Ascii.ascii) (Sextet * Sextet * Sextet * Sextet).
   eapply Build_StrictEncodable with
     (strict_encode := (fun '(a1,a2,a3) => 
-      let '(Ascii.Ascii b0 b1 b2 b3 b4 b5 b6 b7) := a1 in
-      let '(Ascii.Ascii b8 b9 b10 b11 b12 b13 b14 b15) := a2 in
-      let '(Ascii.Ascii b16 b17 b18 b19 b20 b21 b22 b23) := a3 in
+      let '(Ascii.Ascii b7 b6 b5 b4 b3 b2 b1 b0) := a1 in
+      let '(Ascii.Ascii b15 b14 b13 b12 b11 b10 b9 b8) := a2 in
+      let '(Ascii.Ascii b23 b22 b21 b20 b19 b18 b17 b16) := a3 in
       ((sextet b0 b1 b2 b3 b4 b5), (sextet b6 b7 b8 b9 b10 b11), (sextet b12 b13 b14 b15 b16 b17), (sextet b18 b19 b20 b21 b22 b23))))
     (strict_decode := (fun '(p1,p2,p3,p4) => 
       let '(sextet b0 b1 b2 b3 b4 b5) := p1 in
       let '(sextet b6 b7 b8 b9 b10 b11) := p2 in
       let '(sextet b12 b13 b14 b15 b16 b17) := p3 in
       let '(sextet b18 b19 b20 b21 b22 b23) := p4 in
-      (Ascii.Ascii b0 b1 b2 b3 b4 b5 b6 b7, 
-        Ascii.Ascii b8 b9 b10 b11 b12 b13 b14 b15,
-        Ascii.Ascii b16 b17 b18 b19 b20 b21 b22 b23))).
+      (Ascii.Ascii b7 b6 b5 b4 b3 b2 b1 b0, 
+        Ascii.Ascii b15 b14 b13 b12 b11 b10 b9 b8,
+        Ascii.Ascii b23 b22 b21 b20 b19 b18 b17 b16))).
     dec_encode.
   Defined.
 
@@ -684,3 +681,13 @@ Module Base64.
   Defined.
 
 End Base64.
+
+Global Instance StandardStringEncoder : Encodable string string :=
+  @Encodable_string_string Base64Standard.
+
+Definition encode_test1 := encode "Hello, World!".
+Definition decode_test1 := decode encode_test1.
+
+Compute encode_test1.
+Compute decode_test1.
+
