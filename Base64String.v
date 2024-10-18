@@ -18,40 +18,75 @@ Ltac break_match :=
 
 Ltac inv H := inversion H; subst; clear H.
 
-Class StrictEncodable (A B : Type) := {
-  strict_encode : A -> B;
-  strict_decode : B -> A;
-  strict_invol : forall a, strict_decode (strict_encode a) = a
-}.
-
 Class Encodable (A B : Type) := {
   encode : A -> B;
   decode : B -> option A;
   invol : forall a, decode (encode a) = Some a
 }.
 
-Class DecEq (A : Type) := {
+Class StrictEncodable (A B : Type) := {
+  strict_encode : A -> B;
+  strict_decode : B -> A;
+  strict_invol : forall a, strict_decode (strict_encode a) = a
+}.
+
+Global Instance Encodable_from_strict (A B : Type) `{StrictEncodable A B} : Encodable A B.
+eapply Build_Encodable with
+  (encode := strict_encode)
+  (decode := fun b => Some (strict_decode b)).
+intros; erewrite strict_invol; eauto.
+Defined.
+
+Class EqClass (A : Type) := {
   eqb : A -> A -> bool;
   eqb_eq : forall x y, eqb x y = true <-> x = y
 }.
 
-Lemma eqb_refl : forall A `{DecEq A} (a : A),
+Class DecEq (A : Type) := {
+  decEq : forall x y : A, {x = y} + {x <> y}
+}.
+
+Lemma eqb_refl : forall A `{EqClass A} (a : A),
   eqb a a = true.
 Proof.
   intros; rewrite eqb_eq; reflexivity.
 Qed.
 
-Global Instance DecEq_nat : DecEq nat := {
+Lemma eqb_neq : forall A `{EqClass A} (a b : A),
+  eqb a b = false <-> a <> b.
+Proof.
+  split; intros; destruct (eqb a b) eqn:E; eauto; try congruence;
+  try rewrite eqb_eq in *; try congruence.
+  intros HC; rewrite <- eqb_eq in HC; congruence.
+Qed.
+
+Theorem decEq_impl_id_irrel : forall A `{DecEq A} (x y : A) (H1 H2 : x = y),
+  H1 = H2.
+Proof.
+  intros.
+  eapply Eqdep_dec.eq_proofs_unicity.
+  intros.
+  destruct (decEq x0 y0); eauto.
+Qed.
+
+Global Instance DecEq_from_EqClass (A : Type) `{EqClass A} : DecEq A.
+econstructor; intros.
+destruct (eqb x y) eqn:E.
+- rewrite eqb_eq in *; subst; eauto.
+- rewrite eqb_neq in *; eauto.
+Qed.
+
+Global Instance EqClass_nat : EqClass nat := {
   eqb := Nat.eqb;
   eqb_eq := PeanoNat.Nat.eqb_eq
 }.
 
-Global Instance DecEq_Ascii : DecEq Ascii.ascii := {
+Global Instance EqClass_Ascii : EqClass Ascii.ascii := {
   eqb := Ascii.eqb;
   eqb_eq := Ascii.eqb_eq
 }.
 
-Global Instance DecEq_string : DecEq string := {
+Global Instance EqClass_string : EqClass string := {
   eqb := String.eqb;
   eqb_eq := String.eqb_eq
 }.
@@ -131,6 +166,80 @@ Definition Sextet_to_nat (s : Sextet) : nat :=
   | true, true, true, true, true, true => 63
   end.
 
+Definition Sextet_from_nat_safe (n : nat) (Hnlt : n < 64) : Sextet.
+  refine (match n as n' return n = n' -> Sextet with
+  | 0 => fun HN => (sextet false false false false false false)
+  | 1 => fun HN => (sextet false false false false false true)
+  | 2 => fun HN => (sextet false false false false true false)
+  | 3 => fun HN => (sextet false false false false true true)
+  | 4 => fun HN => (sextet false false false true false false)
+  | 5 => fun HN => (sextet false false false true false true)
+  | 6 => fun HN => (sextet false false false true true false)
+  | 7 => fun HN => (sextet false false false true true true)
+  | 8 => fun HN => (sextet false false true false false false)
+  | 9 => fun HN => (sextet false false true false false true)
+  | 10 => fun HN => (sextet false false true false true false)
+  | 11 => fun HN => (sextet false false true false true true)
+  | 12 => fun HN => (sextet false false true true false false)
+  | 13 => fun HN => (sextet false false true true false true)
+  | 14 => fun HN => (sextet false false true true true false)
+  | 15 => fun HN => (sextet false false true true true true)
+  | 16 => fun HN => (sextet false true false false false false)
+  | 17 => fun HN => (sextet false true false false false true)
+  | 18 => fun HN => (sextet false true false false true false)
+  | 19 => fun HN => (sextet false true false false true true)
+  | 20 => fun HN => (sextet false true false true false false)
+  | 21 => fun HN => (sextet false true false true false true)
+  | 22 => fun HN => (sextet false true false true true false)
+  | 23 => fun HN => (sextet false true false true true true)
+  | 24 => fun HN => (sextet false true true false false false)
+  | 25 => fun HN => (sextet false true true false false true)
+  | 26 => fun HN => (sextet false true true false true false)
+  | 27 => fun HN => (sextet false true true false true true)
+  | 28 => fun HN => (sextet false true true true false false)
+  | 29 => fun HN => (sextet false true true true false true)
+  | 30 => fun HN => (sextet false true true true true false)
+  | 31 => fun HN => (sextet false true true true true true)
+  | 32 => fun HN => (sextet true false false false false false)
+  | 33 => fun HN => (sextet true false false false false true)
+  | 34 => fun HN => (sextet true false false false true false)
+  | 35 => fun HN => (sextet true false false false true true)
+  | 36 => fun HN => (sextet true false false true false false)
+  | 37 => fun HN => (sextet true false false true false true)
+  | 38 => fun HN => (sextet true false false true true false)
+  | 39 => fun HN => (sextet true false false true true true)
+  | 40 => fun HN => (sextet true false true false false false)
+  | 41 => fun HN => (sextet true false true false false true)
+  | 42 => fun HN => (sextet true false true false true false)
+  | 43 => fun HN => (sextet true false true false true true)
+  | 44 => fun HN => (sextet true false true true false false)
+  | 45 => fun HN => (sextet true false true true false true)
+  | 46 => fun HN => (sextet true false true true true false)
+  | 47 => fun HN => (sextet true false true true true true)
+  | 48 => fun HN => (sextet true true false false false false)
+  | 49 => fun HN => (sextet true true false false false true)
+  | 50 => fun HN => (sextet true true false false true false)
+  | 51 => fun HN => (sextet true true false false true true)
+  | 52 => fun HN => (sextet true true false true false false)
+  | 53 => fun HN => (sextet true true false true false true)
+  | 54 => fun HN => (sextet true true false true true false)
+  | 55 => fun HN => (sextet true true false true true true)
+  | 56 => fun HN => (sextet true true true false false false)
+  | 57 => fun HN => (sextet true true true false false true)
+  | 58 => fun HN => (sextet true true true false true false)
+  | 59 => fun HN => (sextet true true true false true true)
+  | 60 => fun HN => (sextet true true true true false false)
+  | 61 => fun HN => (sextet true true true true false true)
+  | 62 => fun HN => (sextet true true true true true false)
+  | 63 => fun HN => (sextet true true true true true true)
+  | _ => fun HN => _
+  end eq_refl).
+  subst.
+  destruct n63;
+  repeat eapply PeanoNat.lt_S_n in Hnlt;
+  edestruct PeanoNat.Nat.nlt_0_r; eauto.
+Defined.
+
 Definition Sextet_from_nat (n : nat) : option Sextet :=
   match n with
   | 0 => Some (sextet false false false false false false)
@@ -207,12 +316,37 @@ Ltac dec_encode :=
   simpl in *;
   repeat (break_match; simpl in *; try simple congruence 3; eauto); eauto.
 
-Global Instance encodable_sextet_nat : Encodable Sextet nat.
-eapply Build_Encodable with 
-  (encode := Sextet_to_nat)
-  (decode := Sextet_from_nat).
-dec_encode.
-Defined.
+Lemma Sextet_from_nat_safe_to_nat_invol : forall p HNlt,
+  Sextet_from_nat_safe (Sextet_to_nat p) HNlt = p.
+Proof.
+  intros p H.
+  destruct p.
+  repeat match goal with
+  | b : bool |- _ => destruct b; simpl in *; eauto
+  end.
+Qed.
+
+Lemma Sextet_to_nat_from_safe_invol : forall n Hnlt,
+  Sextet_to_nat (Sextet_from_nat_safe n Hnlt) = n.
+Proof.
+  intros n H.
+  do 64 (destruct n; [ reflexivity | ]).
+
+  Require Import Lia.
+  lia.
+Qed.
+
+Lemma Sextet_from_to_nat_invol : forall p,
+  Sextet_from_nat (Sextet_to_nat p) = Some p.
+Proof.
+  dec_encode.
+Qed.
+
+Global Instance encodable_sextet_nat : Encodable Sextet nat := {
+  encode := Sextet_to_nat;
+  decode := Sextet_from_nat;
+  invol := Sextet_from_to_nat_invol
+}.
 
 Lemma Sextet_to_nat_lt_64 : forall p,
   Sextet_to_nat p < 64.
@@ -222,6 +356,16 @@ Proof.
   | b : bool |- _ => destruct b; try (repeat econstructor; fail)
   end.
 Qed.
+
+Lemma Sextet_from_nat_lt_64_some : forall n,
+  n < 64 ->
+  exists p, Sextet_from_nat n = Some p.
+Proof.
+  intros.
+  repeat (destruct n; simpl in *; eauto;
+  try eapply PeanoNat.Nat.succ_lt_mono in H;
+  try (edestruct PeanoNat.Nat.nlt_0_r; eauto; fail)).
+Defined.
 
 Inductive QuadSextetList :=
 | QSnil
@@ -244,6 +388,90 @@ Notation "' pat <- a ;; b" :=
   | Some pat => b
   | None => None
   end) (right associativity, at level 60, pat pattern). *)
+Require Import StrictProp.
+
+(* inspired by Bonak: https://github.com/artagnon/bonak/blob/master/theories/%CE%BDType/LeYoneda.v *)
+Inductive SFalse : SProp :=.
+Inductive STrue : SProp := sI.
+(* Equality in SProp is =S *)
+Global Hint Constructors STrue SFalse Box Squash : core.
+Inductive eqsprop {A: SProp} (x: A): A -> Prop := eqsprop_refl: eqsprop x x.
+Infix "=S" := eqsprop (at level 70): type_scope.
+
+Fixpoint strict_In {A : Type} `{EqClass A} (x : A) (l : list A) : SProp :=
+  match l with
+  | [] => SFalse
+  | h :: t => 
+    match decEq x h with
+    | left _ => STrue
+    | right _ => strict_In x t
+    end
+  end.
+
+Theorem strict_in_dec {A : Type} `{EqClass A} (x : A) (l : list A) : 
+  {Box (strict_In x l)} + {~ Box (strict_In x l)}.
+Proof.
+  induction l; simpl in *.
+  - right; intros HC; inv HC; intuition.
+  - destruct IHl.
+    * (* strict_In x l *)
+      destruct decEq; intuition; eauto.
+    * (* ~ strict_In x l *)
+      destruct decEq; intuition; eauto.
+Qed.
+
+Theorem strict_In_iff_In : forall A `{EqClass A} l x,
+  Box (strict_In x l) <-> In x l.
+Proof.
+  induction l; simpl in *; intuition.
+  - inv H0; intuition.
+  - inv H0.
+    repeat break_match; subst; intuition.
+    right; eapply IHl; eauto.
+  - subst; destruct decEq; eauto; intuition.
+  - destruct decEq; eauto; erewrite IHl; eauto.
+Qed.
+Global Hint Rewrite strict_In_iff_In : core.
+
+Theorem strict_In_irrel : forall A `{EqClass A} x l (H1 H2 : strict_In x l),
+  H1 =S H2.
+Proof.
+  now reflexivity.
+Qed.
+
+Fixpoint strict_NoDup {A : Type} `{EqClass A} (l : list A) : SProp :=
+  match l with
+  | [] => STrue
+  | h :: t => 
+    match strict_in_dec h t with
+    | left _ => SFalse
+    | right _ => strict_NoDup t
+    end
+  end.
+
+Theorem strict_NoDup_iff_NoDup : forall A `{EqClass A} l,
+  Box (strict_NoDup l) <-> NoDup l.
+Proof.
+  induction l; simpl in *; intuition.
+  - econstructor.
+  - destruct strict_in_dec; subst; intuition.
+    * inv H2; intuition.
+    * econstructor; eauto.
+      intros HC; eapply n.
+      erewrite strict_In_iff_In; eauto.
+  - destruct strict_in_dec; subst; intuition.
+    * inv H2; intuition. 
+      exfalso; eapply H5.
+      rewrite <- strict_In_iff_In; eauto.
+    * inv H2; intuition.
+Qed.
+
+Lemma strict_NoDup_irrel : forall A `{EqClass A} l (H1 H2 : strict_NoDup l),
+  H1 =S H2.
+Proof.
+  now reflexivity.
+Qed.
+
 Section Base64.
 
   Variable b : Base64Options.
@@ -304,6 +532,64 @@ Section Base64.
     simpl in *.
     econstructor.
   Defined.
+  
+  Fixpoint Base64Encoded (s1 : string) : SProp :=
+    match s1 with
+    | EmptyString => STrue
+    | String a1 s2 => 
+      match s2 with
+      | EmptyString => 
+        (* no strings of length n where n % 4 <> 0 are base 64 encoded *)
+        SFalse
+      | String a2 s3 =>
+        match s3 with
+        | EmptyString => SFalse
+        | String a3 s4 =>
+          match s4 with
+          | EmptyString => SFalse
+          | String a4 s5 =>
+            (* first two must always be in alphabet *)
+            if (strict_in_dec a1 Base64Alphabet)
+            then if (strict_in_dec a2 Base64Alphabet)
+            then 
+              (* third is either in alphabet, 
+                OR both 3 and 4 are pads and s5 == empty *)
+              if (strict_in_dec a3 Base64Alphabet)
+              then 
+                (* fourth is either in alphabet,
+                  OR it is a pad and s5 == empty *)
+                if (strict_in_dec a4 Base64Alphabet)
+                then Base64Encoded s5
+                else 
+                  if (Ascii.eqb a4 Base64Padding_special)
+                  then
+                    match s5 with
+                    | EmptyString => STrue
+                    | _ => SFalse
+                    end
+                  else SFalse
+              else 
+                (* if 3 is a pad, so must 4 be *)
+                if (Ascii.eqb a3 Base64Padding_special)
+                then 
+                  if (Ascii.eqb a4 Base64Padding_special)
+                  then 
+                    match s5 with
+                    | EmptyString => STrue
+                    | _ => SFalse
+                    end
+                  else SFalse
+                else SFalse
+            else SFalse
+            else SFalse
+          end
+        end
+      end
+    end.
+
+  Definition Base64_Ascii := {a : Ascii.ascii & Box (strict_In a Base64Alphabet)}.
+
+  Definition Base64_String := {s : string & Box (Base64Encoded s)}.
 
   Definition Base64Padding : Ascii.ascii := 
     Ascii.Ascii true false true true true true false false.
@@ -340,13 +626,7 @@ Section Base64.
         eapply (nth_safe _ n l0);
         eapply (PeanoNat.lt_S_n _ _ HL).
   Defined.
-
-  Definition packet_encode (p : Sextet) : Ascii.ascii.
-    refine (nth_safe (encode p) Base64Alphabet).
-  rewrite Base64AlphabetLengthCorrect;
-  eapply Sextet_to_nat_lt_64.
-  Defined.
-
+  
   Lemma in_nth_safe : forall A (l : list A) n `{HL : n < List.length l},
     In (@nth_safe _ n l HL) l.
   Proof.
@@ -354,13 +634,27 @@ Section Base64.
     destruct n; eauto.
   Qed.
 
-  Lemma packet_encode_in_alphabet : forall p,
-    In (packet_encode p) Base64Alphabet.
+  Lemma strict_In_nth_safe : forall A `{EqClass A} (l : list A) n `{HL : n < List.length l},
+    strict_In (@nth_safe _ n l HL) l.
   Proof.
-    induction p.
-    unfold packet_encode.
-    eapply in_nth_safe.
+    induction l; simpl in *; intuition; try (inversion HL; fail).
+    destruct decEq; eauto.
+    destruct n; simpl in *; eauto.
+    congruence.
   Qed.
+
+  Lemma sextet_to_nat_lt_base64alphabet_length : forall s,
+    Sextet_to_nat s < List.length Base64Alphabet.
+  Proof.
+    rewrite Base64AlphabetLengthCorrect.
+    eapply Sextet_to_nat_lt_64.
+  Qed.
+
+  Definition packet_encode (p : Sextet) : Base64_Ascii.
+    eapply existT with (x := @nth_safe _ (Sextet_to_nat p) Base64Alphabet (sextet_to_nat_lt_base64alphabet_length p)).
+    econstructor.
+    eapply strict_In_nth_safe.
+  Defined.
 
   Lemma Base64Padding_not_in_alphabet : 
     ~ In Base64Padding Base64Alphabet.
@@ -373,7 +667,7 @@ Section Base64.
     end.
   Qed.
 
-  Fixpoint index_of {A : Type} `{DecEq A} (s : A) (l : list A) : option nat :=
+  Fixpoint index_of {A : Type} `{EqClass A} (s : A) (l : list A) : option nat :=
     match l with
     | [] => None
     | h :: t => if eqb s h then Some 0 else
@@ -382,15 +676,55 @@ Section Base64.
       | None => None
       end
     end.
-
-  Definition packet_decode (s : Ascii.ascii) : option Sextet.
-    refine (match index_of s Base64Alphabet with
-    | Some n => decode n
-    | None => None
-    end).
+  
+  Fixpoint index_of_safe {A : Type} `{EqClass A} (s : A) (l : list A) 
+      (HIn : strict_In s l) {struct l} : nat.
+    destruct l; simpl in *.
+    - inversion HIn.
+    - destruct decEq.
+      * exact 0.
+      * eapply (S (index_of_safe _ _ s l HIn)).
   Defined.
 
-  Lemma nodup_nth_safe_same_false : forall A `{DecEq A} (l : list A) n `{HL : n < List.length l},
+  (* Lemma index_of_safe : forall A `{EqClass A} (l : list A) v,
+    In v l ->
+    index_of v l <> None.
+  Proof.
+    induction l; simpl in *; intuition; subst; eauto.
+    - rewrite eqb_refl in *; congruence.
+    - destruct (eqb v a) eqn:E; eauto; try congruence;
+      break_match; eauto; try congruence.
+  Qed. *)
+
+  Lemma index_of_nth_lt_length : forall A `{EqClass A} (l : list A) v HL,
+    index_of_safe v l HL < List.length l.
+  Proof.
+    induction l; simpl in *; intuition; try congruence.
+    destruct decEq.
+    - eapply PeanoNat.Nat.lt_0_succ.
+    - erewrite <- PeanoNat.Nat.succ_lt_mono.
+      eapply IHl.
+  Qed.
+
+  Definition box_proj {A} :=
+    fun (x : Box A) => match x with
+    | box x' => x'
+    end.
+
+  Definition packet_decode (s : Base64_Ascii) : Sextet.
+    refine (
+      Sextet_from_nat_safe (index_of_safe (projT1 s) Base64Alphabet (box_proj (projT2 s))) _).
+    erewrite <- Base64AlphabetLengthCorrect.
+    eapply index_of_nth_lt_length.
+  Defined.
+    (* - eapply index_of_nth_lt_length in e. 
+      rewrite Base64AlphabetLengthCorrect in *; eauto.
+    - eapply index_of_safe in HN; intuition.
+      eapply (projT2 x).
+    - eauto.
+  Defined. *)
+
+  Lemma nodup_nth_safe_same_false : forall A `{EqClass A} (l : list A) n `{HL : n < List.length l},
     NoDup ((@nth_safe _ n l HL) :: l) ->
     False.
   Proof.
@@ -401,138 +735,385 @@ Section Base64.
       simpl in *; eauto.
   Qed.
 
-  Lemma index_of_nth_safe_invol : forall A `{DecEq A} l n `{HL : n <  List.length l},
+  Lemma index_of_nth_safe_invol : forall A `{EqClass A} l n `{HL : n <  List.length l} HL',
     NoDup l -> 
-    index_of (@nth_safe _ n l HL) l = Some n.
+    index_of_safe (@nth_safe _ n l HL) l HL' = n.
   Proof.
     induction l; intros; simpl in *; try (inversion HL; fail).
     destruct n; simpl in *.
-    - rewrite eqb_refl; eauto.
-    - erewrite IHl.
-      * break_match; eauto;
-        rewrite eqb_eq in *; subst;
-        eapply nodup_nth_safe_same_false in H0; intuition.
-      * inversion H0; eauto.
+    - set (x := eqb a a).
+      simpl in *.
+      (* Set Printing All. *)
+      set (x' := 
+      @eq_ind_r A a (fun a0 : A => forall _ : @eq bool (@eqb A H a a0) false,
+      @In A a l)
+      (fun E0 : @eq bool x false =>
+      False_ind (@In A a l)
+      (@eq_ind bool true
+      (fun e : bool =>
+      match e return Prop with
+      | true => True
+      | false => False
+      end) I false
+      (@eq_ind bool x (fun b0 : bool => @eq bool b0 false) E0 true
+      (@eqb_refl A H a)))) a).
+      simpl in *.
+      clearbody x'.
+      destruct decEq; simpl in *; eauto; try congruence.
+    - break_match; subst; eauto.
+      * edestruct nodup_nth_safe_same_false; eauto.
+      * f_equal.
+        eapply IHl; inversion H0; eauto.
   Qed.
   
   Lemma packet_decode_encode_invol : forall p,
-    packet_decode (packet_encode p) = Some p.
+    packet_decode (packet_encode p) = p.
   Proof.
-    dec_encode.
     unfold packet_encode, packet_decode.
-    rewrite index_of_nth_safe_invol; try rewrite invol; eauto.
-    eapply NoDupBase64Alphabet.
+    simpl in *.
+    intros p.
+    Set Printing All.
+    set (x' := 
+    (@eq_ind nat (@Datatypes.length Ascii.ascii Base64Alphabet)
+(fun n : nat =>
+lt
+(@index_of_safe Ascii.ascii EqClass_Ascii
+(@nth_safe Ascii.ascii (Sextet_to_nat p) Base64Alphabet
+(sextet_to_nat_lt_base64alphabet_length p)) Base64Alphabet
+(@strict_In_nth_safe Ascii.ascii EqClass_Ascii Base64Alphabet
+(Sextet_to_nat p) (sextet_to_nat_lt_base64alphabet_length p))) n)
+(@index_of_nth_lt_length Ascii.ascii EqClass_Ascii Base64Alphabet
+(@nth_safe Ascii.ascii (Sextet_to_nat p) Base64Alphabet
+(sextet_to_nat_lt_base64alphabet_length p))
+(@strict_In_nth_safe Ascii.ascii EqClass_Ascii Base64Alphabet
+(Sextet_to_nat p) (sextet_to_nat_lt_base64alphabet_length p)))
+(S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S (S O)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))) Base64AlphabetLengthCorrect)).
+  clearbody x'.
+  simpl in *.
+    Unset Printing All.
+    generalize dependent x'.
+    erewrite index_of_nth_safe_invol.
+    - intros.
+      erewrite (Sextet_from_nat_safe_to_nat_invol p); eauto.
+    - eapply NoDupBase64Alphabet.
   Qed.
-
   
-  Global Instance Encodable_sextet_ascii : Encodable Sextet Ascii.ascii := {
-    encode := packet_encode;
-    decode := packet_decode;
-    invol := packet_decode_encode_invol
+  Global Instance Encodable_sextet_base64_ascii : StrictEncodable Sextet Base64_Ascii := {
+    strict_encode := packet_encode;
+    strict_decode := packet_decode;
+    strict_invol := packet_decode_encode_invol
   }.
 
-  Fixpoint QuadSextetList_encode `{Encodable Sextet Ascii.ascii} (l : QuadSextetList) : string :=
-    match l with
-    | QSnil => ""
-    | QScons_one_pad (p1, p2, p3) => 
-      String (encode p1) (
-        String (encode p2) (
-          String (encode p3) (String Base64Padding "")
-        )
-      )
-    | QScons_two_pad (p1, p2) =>
-      String (encode p1) (
-        String (encode p2) (String Base64Padding (String Base64Padding ""))
-      )
-    | QScons_all (p1, p2, p3, p4) rest => 
-      String (encode p1) (
-        String (encode p2) (
-          String (encode p3) (
-            String (encode p4) (QuadSextetList_encode rest)
-          )
-        )
-      )
-    end.
-  
-  Fixpoint QuadSextetList_decode `{Encodable Sextet Ascii.ascii} (s : string) : option QuadSextetList :=
-    match s with
-    | EmptyString => Some QSnil
-    | String a1 s' =>
-      match s' with
-      | EmptyString => None
-      | String a2 s'' =>
-        match s'' with
-        | EmptyString => None
-        | String a3 s''' =>
-          match s''' with
-          | EmptyString => None
-          | String a4 rest =>
-            p1 <- decode a1 ;;
-            p2 <- decode a2 ;;
-            if (eqb a3 Base64Padding) 
-            then if (eqb a4 Base64Padding) 
-              then Some (QScons_two_pad (p1,p2))
-              else (* if first is padding, but the second isnt, very bad *)
-                None
-            else 
-              p3 <- decode a3 ;;
-              if (eqb a4 Base64Padding) 
-              then (* if first isnt padding, but second is, this is one pad *)
-                Some (QScons_one_pad (p1,p2,p3))
-              else 
-                p4 <- decode a4 ;;
-                l' <- QuadSextetList_decode rest ;;
-                Some (QScons_all (p1,p2,p3,p4) l')
-          end
-        end
-      end
-    end.
+  (* Lemma base64_ascii_in_alphabet : forall a : Base64_Ascii,
+    In (projT1 a) Base64Alphabet. *)
 
-  Global Instance Encodable_quadsextetlist_string : Encodable QuadSextetList string.
-    eapply Build_Encodable with 
-      (encode := QuadSextetList_encode)
-      (decode := QuadSextetList_decode).
-    induction a.
-    - simpl in *; eauto.
-    - simpl in *; repeat break_match; subst.
-      unfold QuadSextetList_decode; simpl in *.
-      repeat break_match;
-      repeat rewrite packet_decode_encode_invol in *;
-      repeat match goal with
-      | H : Some _ = Some _ |- _ => inv H
-      | H : Some _ = None |- _ => inv H
-      end; eauto.
-      rewrite Ascii.eqb_eq in *.
-      pose proof (packet_encode_in_alphabet s).
-      pose proof Base64Padding_not_in_alphabet.
-      rewrite Heqb0 in *.
-      intuition.
-    - simpl in *; repeat break_match; subst.
-      unfold QuadSextetList_decode; simpl in *.
-      repeat break_match;
-      repeat rewrite packet_decode_encode_invol in *;
-      repeat match goal with
-      | H : Some _ = Some _ |- _ => inv H
-      | H : Some _ = None |- _ => inv H
-      end; eauto.
-    - simpl in *; repeat break_match; subst.
-      simpl in *.
-      repeat break_match;
-      repeat rewrite packet_decode_encode_invol in *;
-      repeat match goal with
-      | H : Some _ = Some _ |- _ => inv H
-      | H : Some _ = None |- _ => inv H
-      end; eauto;
-      repeat rewrite Ascii.eqb_eq in *;
-      try match goal with
-      | H : packet_encode ?x = Base64Padding |- _ =>
-        pose proof (packet_encode_in_alphabet x);
-        pose proof Base64Padding_not_in_alphabet;
-        congruence
-      end; congruence.
+  Definition QuadSextetList_encode `{StrictEncodable Sextet Base64_Ascii}
+      : QuadSextetList -> Base64_String.
+    refine (
+      fix F l : Base64_String :=
+      match l with
+      | QSnil => existT _ "" _
+      | QScons_one_pad (p1, p2, p3) => 
+        let '(existT _ r1 Hr1) := strict_encode p1 in
+        let '(existT _ r2 Hr2) := strict_encode p2 in
+        let '(existT _ r3 Hr3) := strict_encode p3 in
+        existT _ (String r1 (String r2 (String r3 (String Base64Padding "")))) _
+      | QScons_two_pad (p1, p2) =>
+        let '(existT _ r1 Hr1) := strict_encode p1 in
+        let '(existT _ r2 Hr2) := strict_encode p2 in
+        existT _ (String r1 (String r2 (String Base64Padding (String Base64Padding "")))) _
+      | QScons_all (p1, p2, p3, p4) rest =>
+        let '(existT _ r1 Hr1) := strict_encode p1 in
+        let '(existT _ r2 Hr2) := strict_encode p2 in
+        let '(existT _ r3 Hr3) := strict_encode p3 in
+        let '(existT _ r4 Hr4) := strict_encode p4 in
+        let '(existT _ rec Hrec) := F rest in
+        existT _ (String r1 (String r2 (String r3 (String r4 rec)))) _
+      end).
+    - simpl in *; repeat destruct strict_in_dec; eauto; try congruence.
+    - simpl in *; repeat destruct strict_in_dec; eauto; try congruence.
+    - simpl in *; repeat destruct strict_in_dec; eauto; try congruence.
+    - simpl in *; repeat destruct strict_in_dec; eauto; try congruence.
   Defined.
 
-  Global Instance StrictEncodable_ascii_two_sextet 
+  Lemma wf_proj_len : 
+    well_founded (fun x y : Base64_String => String.length (projT1 x) < String.length (projT1 y)).
+  Proof.
+    eapply Wf_nat.well_founded_ltof.
+  Defined.
+
+  Definition QuadSextetList_decode' `{StrictEncodable Sextet Base64_Ascii} : 
+    forall s : string, Box (Base64Encoded s) -> QuadSextetList.
+    refine (
+      fix F s HS : QuadSextetList :=
+      _
+    ).
+    destruct s as [| a1 [ | a2 [ | a3 [ | a4 s5 ]]]];
+    try (simpl in *; try inv HS; intuition; fail).
+    + eapply QSnil.
+    + simpl in *.
+      repeat destruct strict_in_dec; simpl in *; try congruence.
+      * set (a1' := strict_decode (existT _ a1 b0)).
+        set (a2' := strict_decode (existT _ a2 b1)).
+        set (a3' := strict_decode (existT _ a3 b2)).
+        set (a4' := strict_decode (existT _ a4 b3)).
+        set (rec := F s5 HS).
+        eapply (QScons_all (a1', a2', a3',a4') rec).
+      * set (a1' := strict_decode (existT _ a1 b0)).
+        set (a2' := strict_decode (existT _ a2 b1)).
+        set (a3' := strict_decode (existT _ a3 b2)).
+        repeat (break_match; try inv HS; intuition).
+        eapply (QScons_one_pad (a1', a2', a3')).
+      * set (a1' := strict_decode (existT _ a1 b0)).
+        set (a2' := strict_decode (existT _ a2 b1)).
+        repeat (break_match; try inv HS; intuition).
+        eapply (QScons_two_pad (a1', a2')).
+      * inv HS; intuition.
+      * inv HS; intuition.
+  Defined.
+
+  Definition QuadSextetList_decode `{StrictEncodable Sextet Base64_Ascii} 
+      : Base64_String -> QuadSextetList.
+    intros.
+    destruct H0 as [s HS].
+    generalize dependent s.
+    eapply QuadSextetList_decode'.
+  Defined.
+  
+  Ltac breakup :=
+    repeat break_match; intuition; eauto;
+    repeat (destruct strict_in_dec; simpl in *; try congruence;
+        subst; simpl in *; eauto);
+    subst; simpl in *;
+    repeat (destruct strict_in_dec; simpl in *; try congruence);
+    try (exfalso; eauto; fail).
+
+  Ltac fix_eq_helper :=
+    intros; breakup.
+
+  Definition box_irrelevant (A:SProp) (x y : Box A) : x = y
+  := match x, y with box x, box y => eq_refl end.
+
+  Ltac collapse_boxes := 
+    repeat match goal with
+    | B1 : Box (strict_In ?x _),
+      B2 : Box (strict_In ?x _) |- _ =>
+      pose proof (box_irrelevant _ B1 B2); subst
+    end.
+
+  Ltac clean :=
+    match goal with
+      | [ H : ?X = ?X |- _ ] => clear H
+    end.
+
+  Ltac subst_max :=
+    repeat clean;
+    repeat match goal with
+            | [ H : ?X = _ |- _ ]  => subst X
+            | [H : _ = ?X |- _] => subst X
+          end.
+
+  Ltac find_rew :=
+    subst_max;
+    match goal with
+    | [ H : ?X _ _ _ _ = _, H' : ?X _ _ _ _ = _ |- _ ] => rewrite H in H'
+    | [ H : ?X = _, H' : ?X = _ |- _ ] => rewrite H in H'
+    | [ H : ?X = _, H' : context [ ?X ] |- _ ] => rewrite H in H'
+    | [ H : ?X = _ |- context [ ?X ] ] => rewrite H
+    end. 
+
+  Ltac find_rev_rew :=
+    subst_max;
+    match goal with
+      | [ H : _ = ?X _ _ _ _, H' : ?X _ _ _ _ = _ |- _ ] => rewrite <- H in H'
+      | [ H : _ = ?X, H' : context [ ?X ] |- _ ] => rewrite <- H in H'
+      | [ H : _ = ?X |- context [ ?X ] ] => rewrite <- H
+    end.
+
+  Theorem qsl_strict_invol : forall `{StrictEncodable Sextet Base64_Ascii} a,
+    QuadSextetList_decode (QuadSextetList_encode a) = a.
+  Proof.
+    induction a; try (simpl in *; eauto; fail).
+    - simpl in *; repeat break_match; subst.
+      unfold QuadSextetList_decode; simpl in *;
+      pose proof Base64Padding_not_in_alphabet;
+      repeat destruct strict_in_dec;
+      try (rewrite <- strict_In_iff_In in *; 
+        exfalso; eauto; intuition; congruence);
+      repeat collapse_boxes;
+      repeat find_rev_rew;
+      repeat rewrite strict_invol; eauto.
+    - simpl in *; repeat break_match; subst;
+      unfold QuadSextetList_decode; simpl in *;
+      pose proof Base64Padding_not_in_alphabet;
+      repeat destruct strict_in_dec;
+      try (rewrite <- strict_In_iff_In in *; 
+        exfalso; eauto; intuition; congruence);
+      repeat collapse_boxes;
+      repeat find_rev_rew;
+      repeat rewrite strict_invol; eauto.
+    - simpl in *.
+      destruct p as [[[p1 p2] p3] p4].
+      destruct (strict_encode p1) as [a1 Ha1] eqn:E1.
+      destruct (strict_encode p2) as [a2 Ha2] eqn:E2.
+      destruct (strict_encode p3) as [a3 Ha3] eqn:E3.
+      destruct (strict_encode p4) as [a4 Ha4] eqn:E4.
+      destruct (QuadSextetList_encode a) as [rec Hrec].
+      unfold QuadSextetList_decode in IHa.
+      set (x := match
+strict_in_dec a1 Base64Alphabet as s
+return
+(Box
+(if s
+then
+if strict_in_dec a2 Base64Alphabet
+then
+if strict_in_dec a3 Base64Alphabet
+then
+if strict_in_dec a4 Base64Alphabet
+then Base64Encoded rec
+else
+if Ascii.eqb a4 Base64Padding_special
+then match rec with
+| "" => STrue
+| String _ _ => SFalse
+end
+else SFalse
+else
+if Ascii.eqb a3 Base64Padding_special
+then
+if Ascii.eqb a4 Base64Padding_special
+then match rec with
+| "" => STrue
+| String _ _ => SFalse
+end
+else SFalse
+else SFalse
+else SFalse
+else SFalse))
+with
+| left _ =>
+match
+strict_in_dec a2 Base64Alphabet as s
+return
+(Box
+(if s
+then
+if strict_in_dec a3 Base64Alphabet
+then
+if strict_in_dec a4 Base64Alphabet
+then Base64Encoded rec
+else
+if Ascii.eqb a4 Base64Padding_special
+then match rec with
+| "" => STrue
+| String _ _ => SFalse
+end
+else SFalse
+else
+if Ascii.eqb a3 Base64Padding_special
+then
+if Ascii.eqb a4 Base64Padding_special
+then match rec with
+| "" => STrue
+| String _ _ => SFalse
+end
+else SFalse
+else SFalse
+else SFalse))
+with
+| left _ =>
+match
+strict_in_dec a3 Base64Alphabet as s
+return
+(Box
+(if s
+then
+if strict_in_dec a4 Base64Alphabet
+then Base64Encoded rec
+else
+if Ascii.eqb a4 Base64Padding_special
+then match rec with
+| "" => STrue
+| String _ _ => SFalse
+end
+else SFalse
+else
+if Ascii.eqb a3 Base64Padding_special
+then
+if Ascii.eqb a4 Base64Padding_special
+then match rec with
+| "" => STrue
+| String _ _ => SFalse
+end
+else SFalse
+else SFalse))
+with
+| left _ =>
+match
+strict_in_dec a4 Base64Alphabet as s
+return
+(Box
+(if s
+then Base64Encoded rec
+else
+if Ascii.eqb a4 Base64Padding_special
+then match rec with
+| "" => STrue
+| String _ _ => SFalse
+end
+else SFalse))
+with
+| left _ => Hrec
+| right n =>
+False_ind
+(Box
+(if Ascii.eqb a4 Base64Padding_special
+then match rec with
+| "" => STrue
+| String _ _ => SFalse
+end
+else SFalse)) (n Ha4)
+end
+| right n =>
+False_ind
+(Box
+(if Ascii.eqb a3 Base64Padding_special
+then
+if Ascii.eqb a4 Base64Padding_special
+then match rec with
+| "" => STrue
+| String _ _ => SFalse
+end
+else SFalse
+else SFalse)) (n Ha3)
+end
+| right n => False_ind (Box SFalse) (n Ha2)
+end
+| right n => False_ind (Box SFalse) (n Ha1)
+end).
+clearbody x.
+  simpl.
+  destruct strict_in_dec; intuition; eauto; try congruence.
+  destruct strict_in_dec; intuition; eauto; try congruence.
+  destruct strict_in_dec; intuition; eauto; try congruence.
+  destruct strict_in_dec; intuition; eauto; try congruence.
+  collapse_boxes.
+  pose proof (box_irrelevant _ Hrec x); subst.
+  repeat find_rev_rew.
+  repeat rewrite strict_invol; eauto.
+  Unshelve. all: eapply EqClass_Ascii.
+Qed. 
+
+  Global Instance StrictEncodable_quadsextetlist_base64_string  
+      `{StrictEncodable Sextet Base64_Ascii} :
+      StrictEncodable QuadSextetList Base64_String := {
+    strict_encode := QuadSextetList_encode;
+    strict_decode := QuadSextetList_decode;
+    strict_invol := qsl_strict_invol
+  }.
+
+  (* Global Instance StrictEncodable_ascii_two_sextet 
     : StrictEncodable Ascii.ascii (Sextet * Sextet).
     eapply Build_StrictEncodable with 
       (strict_encode := fun a =>
@@ -578,7 +1159,7 @@ Section Base64.
         Ascii.Ascii b15 b14 b13 b12 b11 b10 b9 b8,
         Ascii.Ascii b23 b22 b21 b20 b19 b18 b17 b16))).
     dec_encode.
-  Defined.
+  Defined. *)
 
   Fixpoint string_to_quadsextetlist 
     `{HE1 : StrictEncodable (Ascii.ascii * Ascii.ascii * Ascii.ascii) (Sextet * Sextet * Sextet * Sextet)}
@@ -606,7 +1187,11 @@ Section Base64.
     `{HE2 : StrictEncodable (Ascii.ascii * Ascii.ascii) (Sextet * Sextet * Sextet)}
     `{HE3 : StrictEncodable (Ascii.ascii) (Sextet * Sextet)}
     (l : QuadSextetList) 
-    : string :=
+    : Base64. 
+    destruct l.
+    - econstructor; eapply existT with (x := ""); simpl in *; eauto.
+    - 
+      econstructor; eapply existT with (x := String a1 (String a2 "")); simpl in *; eauto.
     match l with
     | QSnil => EmptyString
     | QScons_one_pad p => 
@@ -682,12 +1267,15 @@ Section Base64.
 
 End Base64.
 
-Global Instance StandardStringEncoder : Encodable string string :=
-  @Encodable_string_string Base64Standard.
 
-Definition encode_test1 := encode "Hello, World!".
-Definition decode_test1 := decode encode_test1.
+Section Base64_Testing.
+  Local Instance StandardStringEncoder : Encodable string string :=
+    @Encodable_string_string Base64Standard.
 
-Compute encode_test1.
-Compute decode_test1.
+  Example encode_test_1 : 
+    encode "Hello, World!" = "SGVsbG8sIFdvcmxkIQ==" := eq_refl.
+  Example decode_test_1 : 
+    decode "SGVsbG8sIFdvcmxkIQ==" = Some "Hello, World!" := eq_refl.
+End Base64_Testing.
+
 
