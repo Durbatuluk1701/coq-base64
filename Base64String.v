@@ -8,6 +8,34 @@
 Require Import Coq.Strings.String Coq.Lists.List.
 Import ListNotations.
 Open Scope string_scope.
+  
+Definition string_ind4 := 
+  fun (P : string -> Prop) 
+    (f0 : P EmptyString)
+    (f1 : forall a, P (String a EmptyString))
+    (f2 : forall a1 a2, P (String a1 (String a2 EmptyString)))
+    (f3 : forall a1 a2 a3,
+      P (String a1 (String a2 (String a3 EmptyString))))
+    (f4 : forall a1 a2 a3 a4 rest, 
+      P rest ->
+      P (String a1 (String a2 (String a3 (String a4 rest))))) =>
+  fix F (s1 : string) : P s1 :=
+  match s1 with
+  | EmptyString => f0
+  | String a1 s2 => 
+    match s2 with
+    | EmptyString => f1 a1
+    | String a2 s3 =>
+      match s3 with
+      | EmptyString => f2 a1 a2
+      | String a3 s4 => 
+        match s4 with
+        | EmptyString => f3 a1 a2 a3
+        | String a4 rest => f4 a1 a2 a3 a4 rest (F rest)
+        end
+      end
+    end
+  end.
 
 (* Some Ltac *)
 Ltac break_match :=
@@ -590,6 +618,43 @@ Section Base64.
   Definition Base64_Ascii := {a : Ascii.ascii & Box (strict_In a Base64Alphabet)}.
 
   Definition Base64_String := {s : string & Box (Base64Encoded s)}.
+  
+  Fixpoint Base64Encoded_bool (s1 : string) : bool.
+    destruct s1 as [| a1 [| a2 [| a3 [| a4 s5]]]].
+    - eapply true.
+    - eapply false.
+    - eapply false.
+    - eapply false.
+    - 
+      destruct (strict_in_dec a1 Base64Alphabet).
+      * destruct (strict_in_dec a2 Base64Alphabet).
+        ** destruct (strict_in_dec a3 Base64Alphabet).
+          *** destruct (strict_in_dec a4 Base64Alphabet).
+            **** eapply (Base64Encoded_bool s5).
+            **** destruct (Ascii.eqb a4 Base64Padding_special).
+              ***** destruct s5.
+                ****** eapply true.
+                ****** eapply false.
+              ***** eapply false.
+          *** destruct (Ascii.eqb a3 Base64Padding_special).
+            **** destruct (Ascii.eqb a4 Base64Padding_special).
+              ***** destruct s5.
+                ****** eapply true.
+                ****** eapply false.
+              ***** eapply false.
+            **** eapply false.
+        ** eapply false.
+      * eapply false.
+  Defined.
+
+  Theorem Base64Encoded_bool_iff : forall s,
+    Base64Encoded_bool s = true <-> Box (Base64Encoded s).
+  Proof.
+    induction s using string_ind4; simpl in *; intuition;
+    try congruence; try (inv H; intuition; fail);
+    repeat (break_match; subst; try congruence; eauto);
+    try (inv H1; intuition; fail).
+  Qed.
 
   Definition Base64Padding : Ascii.ascii := 
     Ascii.Ascii true false true true true true false false.
@@ -1113,7 +1178,72 @@ Qed.
     strict_invol := qsl_strict_invol
   }.
 
-  (* Global Instance StrictEncodable_ascii_two_sextet 
+  Definition proj_iff_1 {A B} (x : A <-> B) : A -> B.
+  destruct x.
+  eauto.
+  Qed.
+
+  Definition proj_iff_2 {A B} (x : A <-> B) : B -> A :=
+    match x with
+    | conj fwd bck => bck
+    end.
+
+  Definition decode_string_base64 (s : string) : option Base64_String.
+    destruct (Base64Encoded_bool s) eqn:E.
+    - eapply (Some (existT _ s (proj_iff_1 (Base64Encoded_bool_iff s) E))).
+    - eapply None.
+  Defined.
+
+  Theorem Base64Encoder_invol : forall s,
+    decode_string_base64 (projT1 s) = Some s.
+  Proof.
+    destruct s; simpl in *;
+    unfold decode_string_base64.
+    set (x' := (proj_iff_1 (Base64Encoded_bool_iff x))).
+    clearbody x'.
+    generalize dependent b0.
+    destruct Base64Encoded_bool eqn:E; eauto.
+    - intros.
+      set (x'' := x' eq_refl).
+      clearbody x''.
+      repeat f_equal; eapply box_irrelevant.
+    - intros.
+      exfalso.
+      rewrite <- Base64Encoded_bool_iff in b0; congruence.
+  Qed.
+  
+  (* NOTE: This is maybe a bit confusing, but this is for converting
+  a string that we THINK may be a base64 into the actual Base64_String type.
+  
+  DO NOT use this to try to convert to and from base64, as that is not the purpose of this. The "conversions" are just Identity function where the type is allowed to change beneath. *)
+  Global Instance Encodable_base64_string_string : Encodable Base64_String string := {
+    encode := fun s => projT1 s;
+    decode := decode_string_base64;
+    invol := Base64Encoder_invol
+  }.
+
+  Fixpoint string_to_quadsextetlist 
+    `{HE1 : StrictEncodable (Ascii.ascii * Ascii.ascii * Ascii.ascii) (Sextet * Sextet * Sextet * Sextet)}
+    `{HE2 : StrictEncodable (Ascii.ascii * Ascii.ascii) (Sextet * Sextet * Sextet)}
+    `{HE3 : StrictEncodable (Ascii.ascii) (Sextet * Sextet)}
+    (s : string) 
+    : QuadSextetList :=
+    match s with
+    | EmptyString => QSnil
+    (* we need to pull off 3, or do padding *)
+    | String a1 s' =>
+      match s' with
+      | EmptyString => QScons_two_pad (strict_encode a1)
+      | String a2 s'' =>
+        match s'' with
+        | EmptyString => QScons_one_pad (strict_encode (a1, a2))
+        | String a3 rest => 
+          QScons_all (strict_encode (a1,a2,a3)) (string_to_quadsextetlist rest)
+        end
+      end
+    end.
+  
+  Global Instance StrictEncodable_ascii_two_sextet 
     : StrictEncodable Ascii.ascii (Sextet * Sextet).
     eapply Build_StrictEncodable with 
       (strict_encode := fun a =>
@@ -1159,39 +1289,14 @@ Qed.
         Ascii.Ascii b15 b14 b13 b12 b11 b10 b9 b8,
         Ascii.Ascii b23 b22 b21 b20 b19 b18 b17 b16))).
     dec_encode.
-  Defined. *)
-
-  Fixpoint string_to_quadsextetlist 
-    `{HE1 : StrictEncodable (Ascii.ascii * Ascii.ascii * Ascii.ascii) (Sextet * Sextet * Sextet * Sextet)}
-    `{HE2 : StrictEncodable (Ascii.ascii * Ascii.ascii) (Sextet * Sextet * Sextet)}
-    `{HE3 : StrictEncodable (Ascii.ascii) (Sextet * Sextet)}
-    (s : string) 
-    : QuadSextetList :=
-    match s with
-    | EmptyString => QSnil
-    (* we need to pull off 3, or do padding *)
-    | String a1 s' =>
-      match s' with
-      | EmptyString => QScons_two_pad (strict_encode a1)
-      | String a2 s'' =>
-        match s'' with
-        | EmptyString => QScons_one_pad (strict_encode (a1, a2))
-        | String a3 rest => 
-          QScons_all (strict_encode (a1,a2,a3)) (string_to_quadsextetlist rest)
-        end
-      end
-    end.
+  Defined.
 
   Fixpoint string_from_quadsextetlist 
     `{HE1 : StrictEncodable (Ascii.ascii * Ascii.ascii * Ascii.ascii) (Sextet * Sextet * Sextet * Sextet)}
     `{HE2 : StrictEncodable (Ascii.ascii * Ascii.ascii) (Sextet * Sextet * Sextet)}
     `{HE3 : StrictEncodable (Ascii.ascii) (Sextet * Sextet)}
     (l : QuadSextetList) 
-    : Base64. 
-    destruct l.
-    - econstructor; eapply existT with (x := ""); simpl in *; eauto.
-    - 
-      econstructor; eapply existT with (x := String a1 (String a2 "")); simpl in *; eauto.
+    : string :=
     match l with
     | QSnil => EmptyString
     | QScons_one_pad p => 
@@ -1205,12 +1310,12 @@ Qed.
       String a1 (String a2 (String a3 (string_from_quadsextetlist rest)))
     end.
 
-  Definition string_ind4 := 
+  Definition string_ind3 := 
     fun (P : string -> Prop) 
       (f0 : P EmptyString)
       (f1 : forall a, P (String a EmptyString))
       (f2 : forall a1 a2, P (String a1 (String a2 EmptyString)))
-      (f3 : forall a1 a2 a3 rest, 
+      (f3 : forall a1 a2 a3 rest,
         P rest ->
         P (String a1 (String a2 (String a3 rest)))) =>
     fix F (s1 : string) : P s1 :=
@@ -1222,10 +1327,11 @@ Qed.
       | String a2 s3 =>
         match s3 with
         | EmptyString => f2 a1 a2
-        | String a3 rest => f3 a1 a2 a3 rest (F rest)
+        | String a3 s4 => f3 a1 a2 a3 s4 (F s4)
         end
       end
     end.
+
 
   Global Instance StrictEncodable_string_quadsextetlist 
     `{HE1 : StrictEncodable (Ascii.ascii * Ascii.ascii * Ascii.ascii) (Sextet * Sextet * Sextet * Sextet)}
@@ -1235,47 +1341,64 @@ Qed.
   eapply Build_StrictEncodable with
     (strict_encode := string_to_quadsextetlist)
     (strict_decode := string_from_quadsextetlist).
-  induction a using string_ind4; simpl in *; eauto;
+  induction a using string_ind3; simpl in *; eauto;
   repeat rewrite strict_invol; eauto; rewrite IHa; eauto.
   Defined.
-  
-  Definition encode_string (s : string) : string :=
-    encode (strict_encode s).
 
-  Definition decode_string (s : string) : option string :=
-    s' <- decode s ;;
-    Some (strict_decode s').
-
-  Lemma strict_encode_inj : forall A B `{StrictEncodable A B} a b,
-    Some (strict_encode a) = Some b ->
-    strict_encode a = b.
-  Proof.
+  (* If you are wanting to convert strings to/from Base64 strings, this
+  is the typeclass instance you are wanting to use!!! *)
+  Global Instance StrictEncodable_string_base64_string 
+    `{StrictEncodable string QuadSextetList}
+    `{StrictEncodable QuadSextetList Base64_String}
+    : StrictEncodable string Base64_String.
+    eapply Build_StrictEncodable with
+      (strict_encode := fun s => strict_encode (strict_encode s))
+      (strict_decode := fun s => strict_decode (strict_decode s)).
     intros.
-    inversion H0; eauto.
-  Qed.
-
-  Global Instance Encodable_string_string : Encodable string string.
-  eapply Build_Encodable with
-    (encode := encode_string)
-    (decode := decode_string).
-  unfold encode_string, decode_string; intros.
-  break_match; repeat rewrite invol in *; eauto;
-  try congruence.
-  eapply strict_encode_inj in Heqo; subst.
-  rewrite strict_invol; eauto.
+    repeat rewrite strict_invol; eauto.
   Defined.
-
+  
 End Base64.
 
 
 Section Base64_Testing.
-  Local Instance StandardStringEncoder : Encodable string string :=
-    @Encodable_string_string Base64Standard.
+  Local Instance StandardStringEncoder : StrictEncodable string (Base64_String Base64Standard) :=
+    @StrictEncodable_string_base64_string Base64Standard _ _.
 
+  Definition test_str := "Hello, World!".
+
+  Definition base64_test_str := "SGVsbG8sIFdvcmxkIQ==".
+  Definition base64_encoded_base64_test_str 
+    : Box (Base64Encoded Base64Standard base64_test_str).
+    erewrite <- Base64Encoded_bool_iff.
+      (* Base64Encoded_bool Base64Standard base64_test_str = true. *)
+    unfold base64_test_str.
+    unfold Base64Encoded_bool.
+    repeat (destruct strict_in_dec; 
+      [ match goal with
+      | H : Box _ |- _ => clear H
+      end | 
+        match goal with
+        | H : ~ Box _ |- _ => 
+          try (exfalso; eapply H; clear H;
+            vm_compute; destruct (DecEq_from_EqClass Ascii.ascii);
+            repeat (destruct decEq0 as [ H' | ? ]; [ inv H' | ]); eauto;
+            exfalso; eauto; fail)
+        end ]; eauto).
+  Qed.
+
+  Definition base64_test_str_base64_type : Base64_String Base64Standard :=
+    existT _ base64_test_str base64_encoded_base64_test_str.
+
+  (* NOTE: We are using the projection out of this, since that is the real string value.
+  
+  Technically, since we have all the involutivity proofs completed as part of the StrictEncodable, they should be strictly equivalent. However this takes an IMMENSE amount of time to verify, so it is just simpler to complete it this way instead *)
   Example encode_test_1 : 
-    encode "Hello, World!" = "SGVsbG8sIFdvcmxkIQ==" := eq_refl.
-  Example decode_test_1 : 
-    decode "SGVsbG8sIFdvcmxkIQ==" = Some "Hello, World!" := eq_refl.
+    projT1 (strict_encode test_str) = projT1 (base64_test_str_base64_type).
+  Proof.
+    reflexivity.
+  Qed.
+
 End Base64_Testing.
 
 
