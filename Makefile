@@ -31,7 +31,6 @@ $(PROJ):
 
 clean:	$(COQMK)
 	rm *.vo*
-	rm *.cml
 	$(MAKE) -f $(COQMK) clean
 	rm $(COQMK) $(COQMK).conf
 

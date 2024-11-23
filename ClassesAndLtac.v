@@ -1,4 +1,103 @@
-Require Import String List.
+Require Export String List StrictProp.
+Export ListNotations.
+
+(* Option Notation *)
+Notation "x <- a ;; b" := 
+  (match a with
+  | Some x => b
+  | None => None
+  end) (right associativity, at level 60).
+
+(* inspired by Bonak: https://github.com/artagnon/bonak/blob/master/theories/%CE%BDType/LeYoneda.v *)
+Inductive SFalse : SProp :=.
+Inductive STrue : SProp := sI.
+(* Equality in SProp is =S *)
+Global Hint Constructors STrue SFalse Box Squash : core.
+Inductive eqsprop {A: SProp} (x: A): A -> Prop := eqsprop_refl: eqsprop x x.
+Infix "=S" := eqsprop (at level 70): type_scope.
+
+Ltac box_simpl :=
+  repeat match goal with
+  | [ H : Box SFalse |- _ ] => destruct H; intuition
+  | [ H : Box STrue |- _ ] => clear H
+  | [ H : SFalse |- _ ] => destruct H
+  end.
+
+Definition box_proj {A} :=
+  fun (x : Box A) => match x with
+  | box x' => x'
+  end.
+
+Definition box_irrelevant (A:SProp) (x y : Box A) : x = y
+:= match x, y with box x, box y => eq_refl end.
+
+Ltac collapse_boxes := 
+  repeat match goal with
+  | B1 : Box _,
+    B2 : Box _ |- _ =>
+    pose proof (box_irrelevant _ B1 B2); subst
+  end.
+  
+Ltac clean :=
+  match goal with
+    | [ H : ?X = ?X |- _ ] => clear H
+  end.
+
+Ltac subst_max :=
+  repeat clean;
+  repeat match goal with
+          | [ H : ?X = _ |- _ ]  => subst X
+          | [H : _ = ?X |- _] => subst X
+        end.
+
+Ltac find_rew :=
+  subst_max;
+  match goal with
+  | [ H : ?X _ _ _ _ = _, H' : ?X _ _ _ _ = _ |- _ ] => rewrite H in H'
+  | [ H : ?X = _, H' : ?X = _ |- _ ] => rewrite H in H'
+  | [ H : ?X = _, H' : context [ ?X ] |- _ ] => rewrite H in H'
+  | [ H : ?X = _ |- context [ ?X ] ] => rewrite H
+  end. 
+
+Ltac find_rev_rew :=
+  subst_max;
+  match goal with
+    | [ H : _ = ?X _ _ _ _, H' : ?X _ _ _ _ = _ |- _ ] => rewrite <- H in H'
+    | [ H : _ = ?X, H' : context [ ?X ] |- _ ] => rewrite <- H in H'
+    | [ H : _ = ?X |- context [ ?X ] ] => rewrite <- H
+  end.
+  
+Definition proj_iff_1 {A B} (x : A <-> B) : A -> B.
+destruct x.
+eauto.
+Qed.
+
+Definition proj_iff_2 {A B} (x : A <-> B) : B -> A :=
+  match x with
+  | conj fwd bck => bck
+  end.
+  
+Definition string_ind3 := 
+  fun (P : string -> Prop) 
+    (f0 : P EmptyString)
+    (f1 : forall a, P (String a EmptyString))
+    (f2 : forall a1 a2, P (String a1 (String a2 EmptyString)))
+    (f3 : forall a1 a2 a3 rest,
+      P rest ->
+      P (String a1 (String a2 (String a3 rest)))) =>
+  fix F (s1 : string) : P s1 :=
+  match s1 with
+  | EmptyString => f0
+  | String a1 s2 => 
+    match s2 with
+    | EmptyString => f1 a1
+    | String a2 s3 =>
+      match s3 with
+      | EmptyString => f2 a1 a2
+      | String a3 s4 => f3 a1 a2 a3 s4 (F s4)
+      end
+    end
+  end.
 
 Definition string_ind4 := 
   fun (P : string -> Prop) 

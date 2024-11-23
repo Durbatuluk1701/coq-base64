@@ -3,7 +3,7 @@
 
   Specifically, this will abide by RFC4648, which is the (current) standard for Base64 encoding and decoding.
 
-  However, there is one main divergence from the standard, which is that we will REQUIRE padding to be used in the encoding/decoding.
+  This file is for the case where length is KNOWN, thus we do not need any padding
 *)
 Require Import ClassesAndLtac ListHelpers Base64Helpers.
 Open Scope string_scope.
@@ -39,114 +39,34 @@ Section Base64.
     end; intuition.
   Defined.
 
-  Definition Base64Padding_special : Ascii.ascii. 
-    set (x := string_get_ascii_safe 0).
-    eapply x.
-    eapply (existT) with (x := "=");
-    simpl in *.
-    econstructor.
-  Defined.
-  
   Fixpoint Base64Encoded (s1 : string) : SProp :=
     match s1 with
     | EmptyString => STrue
     | String a1 s2 => 
-      match s2 with
-      | EmptyString => 
-        (* no strings of length n where n % 4 <> 0 are base 64 encoded *)
-        SFalse
-      | String a2 s3 =>
-        match s3 with
-        | EmptyString => SFalse
-        | String a3 s4 =>
-          match s4 with
-          | EmptyString => SFalse
-          | String a4 s5 =>
-            (* first two must always be in alphabet *)
-            if (strict_in_dec a1 Base64Alphabet)
-            then if (strict_in_dec a2 Base64Alphabet)
-            then 
-              (* third is either in alphabet, 
-                OR both 3 and 4 are pads and s5 == empty *)
-              if (strict_in_dec a3 Base64Alphabet)
-              then 
-                (* fourth is either in alphabet,
-                  OR it is a pad and s5 == empty *)
-                if (strict_in_dec a4 Base64Alphabet)
-                then Base64Encoded s5
-                else 
-                  if (Ascii.eqb a4 Base64Padding_special)
-                  then
-                    match s5 with
-                    | EmptyString => STrue
-                    | _ => SFalse
-                    end
-                  else SFalse
-              else 
-                (* if 3 is a pad, so must 4 be *)
-                if (Ascii.eqb a3 Base64Padding_special)
-                then 
-                  if (Ascii.eqb a4 Base64Padding_special)
-                  then 
-                    match s5 with
-                    | EmptyString => STrue
-                    | _ => SFalse
-                    end
-                  else SFalse
-                else SFalse
-            else SFalse
-            else SFalse
-          end
-        end
-      end
+      if strict_in_dec a1 Base64Alphabet 
+      then Base64Encoded s2
+      else SFalse
     end.
 
   Definition Base64_Ascii := {a : Ascii.ascii & Box (strict_In a Base64Alphabet)}.
 
   Definition Base64_String := {s : string & Box (Base64Encoded s)}.
   
-  Fixpoint Base64Encoded_bool (s1 : string) : bool.
-    destruct s1 as [| a1 [| a2 [| a3 [| a4 s5]]]].
-    - eapply true.
-    - eapply false.
-    - eapply false.
-    - eapply false.
-    - 
-      destruct (strict_in_dec a1 Base64Alphabet).
-      * destruct (strict_in_dec a2 Base64Alphabet).
-        ** destruct (strict_in_dec a3 Base64Alphabet).
-          *** destruct (strict_in_dec a4 Base64Alphabet).
-            **** eapply (Base64Encoded_bool s5).
-            **** destruct (Ascii.eqb a4 Base64Padding_special).
-              ***** destruct s5.
-                ****** eapply true.
-                ****** eapply false.
-              ***** eapply false.
-          *** destruct (Ascii.eqb a3 Base64Padding_special).
-            **** destruct (Ascii.eqb a4 Base64Padding_special).
-              ***** destruct s5.
-                ****** eapply true.
-                ****** eapply false.
-              ***** eapply false.
-            **** eapply false.
-        ** eapply false.
-      * eapply false.
-  Defined.
+  Fixpoint Base64Encoded_bool (s1 : string) : bool :=
+    match s1 with
+    | EmptyString => true
+    | String a1 s2 => 
+      if strict_in_dec a1 Base64Alphabet 
+      then Base64Encoded_bool s2
+      else false
+    end.
 
   Theorem Base64Encoded_bool_iff : forall s,
     Base64Encoded_bool s = true <-> Box (Base64Encoded s).
   Proof.
-    induction s using string_ind4; simpl in *; intuition;
-    try congruence; try (inv H; intuition; fail);
-    repeat (break_match; subst; try congruence; eauto);
-    try (inv H1; intuition; fail).
-  Qed.
-
-  Definition Base64Padding : Ascii.ascii := 
-    Ascii.Ascii true false true true true true false false.
-  
-  Lemma Base64Padding_eq_special : Base64Padding = Base64Padding_special.
-  reflexivity.
+    induction s; simpl in *; intuition;
+    break_match; eauto; try congruence; 
+    try exfalso; inv H1; intuition.
   Qed.
 
   Lemma Base64AlphabetLengthCorrect : List.length Base64Alphabet = 64.
@@ -180,17 +100,6 @@ Section Base64.
     eapply strict_In_nth_safe.
   Defined.
 
-  Lemma Base64Padding_not_in_alphabet : 
-    ~ In Base64Padding Base64Alphabet.
-  Proof.
-    unfold Base64Alphabet, Base64Padding;
-    destruct b; simpl in *; intros HC;
-    repeat match goal with
-    | H : _ \/ _ |- _ => 
-      destruct H; simpl in *; try congruence; subst; eauto
-    end.
-  Qed.
-
   Definition packet_decode (s : Base64_Ascii) : Sextet.
     refine (
       Sextet_from_nat_safe (index_of_safe (projT1 s) Base64Alphabet (box_proj (projT2 s))) _).
@@ -222,7 +131,7 @@ Section Base64.
     strict_invol := packet_decode_encode_invol
   }.
 
-  Definition QuadSextetList_encode `{StrictEncodable Sextet Base64_Ascii}
+  (* Definition QuadSextetList_encode `{StrictEncodable Sextet Base64_Ascii}
       : QuadSextetList -> Base64_String.
     refine (
       fix F l : Base64_String :=
@@ -336,7 +245,7 @@ Section Base64.
       repeat find_rev_rew.
       repeat rewrite strict_invol; eauto.
       Unshelve. all: eapply EqClass_Ascii.
-  Qed. 
+  Qed.  *)
 
   Global Instance StrictEncodable_quadsextetlist_base64_string  
       `{StrictEncodable Sextet Base64_Ascii} :
