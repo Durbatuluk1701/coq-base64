@@ -9,12 +9,14 @@ Require Import ClassesAndLtac ListHelpers Base64Helpers.
 Open Scope string_scope.
 
 Inductive Base64Options :=
-| Base64Standard
+| Base64Standard 
 | Base64UrlAndFilenameSafe.
 
 Section Base64.
 
   Variable b : Base64Options.
+
+  Variable padding : bool.
 
   Definition Base64Alphabet : list Ascii.ascii.
     set (x :=
@@ -39,11 +41,11 @@ Section Base64.
     end; intuition.
   Defined.
 
-  Definition Base64Padding_special : Ascii.ascii. 
-    set (x := string_get_ascii_safe 0).
+  Definition Base64Padding_special : padding = true -> Ascii.ascii. 
+    intros; destruct padding; try congruence.
+    set (x := string_get_ascii_safe 0);
     eapply x.
-    eapply (existT) with (x := "=");
-    simpl in *.
+    eapply (existT) with (x := "=").
     econstructor.
   Defined.
   
@@ -57,10 +59,35 @@ Section Base64.
         SFalse
       | String a2 s3 =>
         match s3 with
-        | EmptyString => SFalse
+        | EmptyString => 
+          (* first two must always be in alphabet *)
+          if (strict_in_dec a1 Base64Alphabet)
+          then if (strict_in_dec a2 Base64Alphabet)
+          then 
+            match padding with
+            | true => SFalse
+            | false => STrue
+            end
+          else SFalse
+          else SFalse
         | String a3 s4 =>
           match s4 with
-          | EmptyString => SFalse
+          | EmptyString => 
+            (* first two must always be in alphabet *)
+            if (strict_in_dec a1 Base64Alphabet)
+            then if (strict_in_dec a2 Base64Alphabet)
+            then 
+              (* third is either in alphabet, 
+                OR both 3 and 4 are pads and s5 == empty *)
+              if (strict_in_dec a3 Base64Alphabet)
+              then 
+                match padding with
+                | true => SFalse
+                | false => STrue
+                end
+              else SFalse
+            else SFalse
+            else SFalse
           | String a4 s5 =>
             (* first two must always be in alphabet *)
             if (strict_in_dec a1 Base64Alphabet)
@@ -75,25 +102,33 @@ Section Base64.
                 if (strict_in_dec a4 Base64Alphabet)
                 then Base64Encoded s5
                 else 
-                  if (Ascii.eqb a4 Base64Padding_special)
-                  then
-                    match s5 with
-                    | EmptyString => STrue
-                    | _ => SFalse
-                    end
-                  else SFalse
+                  match padding as p return padding = p -> _ with
+                  | true => fun Hpad =>
+                    if (Ascii.eqb a4 (Base64Padding_special Hpad))
+                    then
+                      match s5 with
+                      | EmptyString => STrue
+                      | _ => SFalse
+                      end
+                    else SFalse
+                  | false => fun Hpad => SFalse
+                  end eq_refl
               else 
                 (* if 3 is a pad, so must 4 be *)
-                if (Ascii.eqb a3 Base64Padding_special)
-                then 
-                  if (Ascii.eqb a4 Base64Padding_special)
+                match padding as p return padding = p -> _ with
+                | true => fun Hpad =>
+                  if (Ascii.eqb a3 (Base64Padding_special Hpad))
                   then 
-                    match s5 with
-                    | EmptyString => STrue
-                    | _ => SFalse
-                    end
+                    if (Ascii.eqb a4 (Base64Padding_special Hpad))
+                    then 
+                      match s5 with
+                      | EmptyString => STrue
+                      | _ => SFalse
+                      end
+                    else SFalse
                   else SFalse
-                else SFalse
+                | false => fun Hpad => SFalse
+                end eq_refl
             else SFalse
             else SFalse
           end
@@ -109,26 +144,44 @@ Section Base64.
     destruct s1 as [| a1 [| a2 [| a3 [| a4 s5]]]].
     - eapply true.
     - eapply false.
-    - eapply false.
-    - eapply false.
+    - destruct (strict_in_dec a1 Base64Alphabet).
+      * destruct (strict_in_dec a2 Base64Alphabet).
+        ** eapply (negb padding).
+        ** eapply false.
+      * eapply false.
+    - destruct (strict_in_dec a1 Base64Alphabet).
+      * destruct (strict_in_dec a2 Base64Alphabet).
+        ** destruct (strict_in_dec a3 Base64Alphabet).
+          *** eapply (negb padding).
+          *** eapply false.
+        ** eapply false.
+      * eapply false.
     - 
       destruct (strict_in_dec a1 Base64Alphabet).
       * destruct (strict_in_dec a2 Base64Alphabet).
         ** destruct (strict_in_dec a3 Base64Alphabet).
           *** destruct (strict_in_dec a4 Base64Alphabet).
             **** eapply (Base64Encoded_bool s5).
-            **** destruct (Ascii.eqb a4 Base64Padding_special).
+            **** 
+              destruct padding eqn:Hpad.
+              + 
+              destruct (Ascii.eqb a4 (Base64Padding_special Hpad)).
               ***** destruct s5.
                 ****** eapply true.
                 ****** eapply false.
               ***** eapply false.
-          *** destruct (Ascii.eqb a3 Base64Padding_special).
-            **** destruct (Ascii.eqb a4 Base64Padding_special).
+              + eapply false.
+          *** 
+            destruct padding eqn:Hpad.
+            + 
+            destruct (Ascii.eqb a3 (Base64Padding_special Hpad)).
+            **** destruct (Ascii.eqb a4 (Base64Padding_special Hpad)).
               ***** destruct s5.
                 ****** eapply true.
                 ****** eapply false.
               ***** eapply false.
             **** eapply false.
+            + eapply false.
         ** eapply false.
       * eapply false.
   Defined.
@@ -138,15 +191,19 @@ Section Base64.
   Proof.
     induction s using string_ind4; simpl in *; intuition;
     try congruence; try (inv H; intuition; fail);
-    repeat (break_match; subst; try congruence; eauto);
-    try (inv H1; intuition; fail).
+    repeat (break_match; simpl in *; subst; try congruence; eauto);
+    try (set (x' := Base64Padding_special) in *; clearbody x';
+    destruct padding; try congruence); try box_simpl;
+    repeat (destruct Ascii.eqb; try simple congruence 1; box_simpl; eauto).
   Qed.
 
-  Definition Base64Padding : Ascii.ascii := 
-    Ascii.Ascii true false true true true true false false.
+  Definition Base64Padding : padding = true -> Ascii.ascii := 
+    fun _ => Ascii.Ascii true false true true true true false false.
   
-  Lemma Base64Padding_eq_special : Base64Padding = Base64Padding_special.
-  reflexivity.
+  Lemma Base64Padding_eq_special (Hpad : padding = true) 
+    : (Base64Padding Hpad) = (Base64Padding_special Hpad).
+  unfold Base64Padding, Base64Padding_special;
+  subst; simpl in *; reflexivity.
   Qed.
 
   Lemma Base64AlphabetLengthCorrect : List.length Base64Alphabet = 64.
@@ -180,11 +237,12 @@ Section Base64.
     eapply strict_In_nth_safe.
   Defined.
 
-  Lemma Base64Padding_not_in_alphabet : 
-    ~ In Base64Padding Base64Alphabet.
+  Lemma Base64Padding_not_in_alphabet (Hpad : padding = true) :
+    ~ In (Base64Padding Hpad) Base64Alphabet.
   Proof.
     unfold Base64Alphabet, Base64Padding;
     destruct b; simpl in *; intros HC;
+    destruct padding;
     repeat match goal with
     | H : _ \/ _ |- _ => 
       destruct H; simpl in *; try congruence; subst; eauto
@@ -223,7 +281,7 @@ Section Base64.
   }.
 
   Definition QuadSextetList_encode `{StrictEncodable Sextet Base64_Ascii}
-      : QuadSextetList -> Base64_String.
+      (Hpad : padding = true) : QuadSextetList -> Base64_String.
     refine (
       fix F l : Base64_String :=
       match l with
@@ -232,11 +290,11 @@ Section Base64.
         let '(existT _ r1 Hr1) := strict_encode p1 in
         let '(existT _ r2 Hr2) := strict_encode p2 in
         let '(existT _ r3 Hr3) := strict_encode p3 in
-        existT _ (String r1 (String r2 (String r3 (String Base64Padding "")))) _
+        existT _ (String r1 (String r2 (String r3 (String (Base64Padding Hpad) "")))) _
       | QScons_two_pad (p1, p2) =>
         let '(existT _ r1 Hr1) := strict_encode p1 in
         let '(existT _ r2 Hr2) := strict_encode p2 in
-        existT _ (String r1 (String r2 (String Base64Padding (String Base64Padding "")))) _
+        existT _ (String r1 (String r2 (String (Base64Padding Hpad) (String (Base64Padding Hpad) "")))) _
       | QScons_all (p1, p2, p3, p4) rest =>
         let '(existT _ r1 Hr1) := strict_encode p1 in
         let '(existT _ r2 Hr2) := strict_encode p2 in
@@ -247,7 +305,20 @@ Section Base64.
       end).
     - simpl in *; repeat destruct strict_in_dec; eauto; try congruence.
     - simpl in *; repeat destruct strict_in_dec; eauto; try congruence.
+      set (x := ((if padding as p4 return (padding = p4 -> SProp) then fun Hpad0 : padding = true => if match Base64Padding_special Hpad0 with | Ascii.Ascii b3 b4 b5 b6 b7 b8 b9 b10 => if if if if if if if if b3 then true else false then if b4 then false else true else false then if b5 then true else false else false then if b6 then true else false else false then if b7 then true else false else false then if b8 then true else false else false then if b9 then false else true else false then if b10 then false else true else false end then STrue else SFalse else fun _ : padding = false => SFalse) eq_refl)).
+      simpl in *.
+      collapse_boxes.
+      set (y := eq_refl) in *; clearbody y.
+      unfold Base64Padding_special in *.
+      simpl in *.
+      set (z := (eq_ind false (fun e : bool => if e then False else True) I true)) in *; clearbody z.
+      clear n.
+      destruct padding; try congruence; subst x; eauto.
     - simpl in *; repeat destruct strict_in_dec; eauto; try congruence.
+      clear n.
+      unfold Base64Padding_special; simpl in *.
+      set (z := (eq_ind false (fun e : bool => if e then False else True) I true)) in *; clearbody z.
+      destruct padding; try congruence; eauto.
     - simpl in *; repeat destruct strict_in_dec; eauto; try congruence.
   Defined.
 
@@ -257,76 +328,89 @@ Section Base64.
     eapply Wf_nat.well_founded_ltof.
   Defined.
 
-  Definition QuadSextetList_decode' `{StrictEncodable Sextet Base64_Ascii} : 
+  Definition QuadSextetList_decode' `{StrictEncodable Sextet Base64_Ascii} 
+    (Hpad : padding = true) :
     forall s : string, Box (Base64Encoded s) -> QuadSextetList.
     refine (
       fix F s HS : QuadSextetList :=
       _
     ).
     destruct s as [| a1 [ | a2 [ | a3 [ | a4 s5 ]]]];
-    try (simpl in *; try inv HS; intuition; fail).
-    + eapply QSnil.
-    + simpl in *.
-      repeat destruct strict_in_dec; simpl in *; try congruence.
-      * set (a1' := strict_decode (existT _ a1 b0)).
-        set (a2' := strict_decode (existT _ a2 b1)).
-        set (a3' := strict_decode (existT _ a3 b2)).
-        set (a4' := strict_decode (existT _ a4 b3)).
-        set (rec := F s5 HS).
-        eapply (QScons_all (a1', a2', a3',a4') rec).
-      * set (a1' := strict_decode (existT _ a1 b0)).
-        set (a2' := strict_decode (existT _ a2 b1)).
-        set (a3' := strict_decode (existT _ a3 b2)).
-        repeat (break_match; try inv HS; intuition).
-        eapply (QScons_one_pad (a1', a2', a3')).
-      * set (a1' := strict_decode (existT _ a1 b0)).
-        set (a2' := strict_decode (existT _ a2 b1)).
-        repeat (break_match; try inv HS; intuition).
-        eapply (QScons_two_pad (a1', a2')).
-      * inv HS; intuition.
-      * inv HS; intuition.
+    try (simpl in *; try destruct padding; box_simpl; 
+      try congruence; intuition; fail);
+    try (simpl in *; repeat destruct strict_in_dec;
+      try destruct padding; repeat box_simpl; try congruence).
+    * eapply QSnil.
+    * set (a1' := strict_decode (existT _ a1 b0)).
+      set (a2' := strict_decode (existT _ a2 b1)).
+      set (a3' := strict_decode (existT _ a3 b2)).
+      set (a4' := strict_decode (existT _ a4 b3)).
+      set (rec := F s5 HS).
+      eapply (QScons_all (a1', a2', a3',a4') rec).
+    * unfold Base64Padding_special in *; simpl in *;
+      set (z := eq_ind false (fun e : bool => if e then False else True) I true) in *; clearbody z;
+      destruct padding; box_simpl;
+      set (a1' := strict_decode (existT _ a1 b0)).
+      set (a2' := strict_decode (existT _ a2 b1)).
+      set (a3' := strict_decode (existT _ a3 b2)).
+      repeat (break_match; try inv HS; intuition).
+      eapply (QScons_one_pad (a1', a2', a3')).
+    * unfold Base64Padding_special in *; simpl in *;
+      set (z := eq_ind false (fun e : bool => if e then False else True) I true) in *; clearbody z;
+      destruct padding; box_simpl;
+      set (a1' := strict_decode (existT _ a1 b0)).
+      set (a2' := strict_decode (existT _ a2 b1)).
+      repeat (break_match; try inv HS; intuition).
+      eapply (QScons_two_pad (a1', a2')).
   Defined.
 
   Definition QuadSextetList_decode `{StrictEncodable Sextet Base64_Ascii} 
-      : Base64_String -> QuadSextetList.
+      (Hpad : padding = true) : Base64_String -> QuadSextetList.
     intros.
     destruct H0 as [s HS].
     generalize dependent s.
-    eapply QuadSextetList_decode'.
+    eapply (QuadSextetList_decode' Hpad).
   Defined.
   
-  Theorem qsl_strict_invol : forall `{StrictEncodable Sextet Base64_Ascii} a,
-    QuadSextetList_decode (QuadSextetList_encode a) = a.
+  Theorem qsl_strict_invol : forall `{StrictEncodable Sextet Base64_Ascii} 
+    (Hpad : padding = true) a,
+    QuadSextetList_decode Hpad (QuadSextetList_encode Hpad a) = a.
   Proof.
     induction a; try (simpl in *; eauto; fail).
+    - simpl in *; repeat break_match; subst; try congruence.
     - simpl in *; repeat break_match; subst.
       unfold QuadSextetList_decode; simpl in *;
       pose proof Base64Padding_not_in_alphabet;
       repeat destruct strict_in_dec;
-      try (rewrite <- strict_In_iff_In in *; 
+      try (exfalso; intuition; rewrite strict_In_iff_In in *; 
         exfalso; eauto; intuition; congruence);
       repeat collapse_boxes;
       repeat find_rev_rew;
       repeat rewrite strict_invol; eauto.
+      clear n H0.
+      destruct padding; eauto.
+      destruct False_ind; inv unbox.
     - simpl in *; repeat break_match; subst;
       unfold QuadSextetList_decode; simpl in *;
       pose proof Base64Padding_not_in_alphabet;
       repeat destruct strict_in_dec;
-      try (rewrite <- strict_In_iff_In in *; 
+      try (exfalso; intuition; rewrite strict_In_iff_In in *; 
         exfalso; eauto; intuition; congruence);
       repeat collapse_boxes;
       repeat find_rev_rew;
       repeat rewrite strict_invol; eauto.
+      clear n H0.
+      destruct padding; eauto.
+      destruct False_ind; inv unbox.
     - simpl in *.
       destruct p as [[[p1 p2] p3] p4].
       destruct (strict_encode p1) as [a1 Ha1] eqn:E1.
       destruct (strict_encode p2) as [a2 Ha2] eqn:E2.
       destruct (strict_encode p3) as [a3 Ha3] eqn:E3.
       destruct (strict_encode p4) as [a4 Ha4] eqn:E4.
-      destruct (QuadSextetList_encode a) as [rec Hrec].
+      destruct (QuadSextetList_encode Hpad a) as [rec Hrec].
       unfold QuadSextetList_decode in IHa.
-      set (x := match strict_in_dec a1 Base64Alphabet as s return (Box (if s then if strict_in_dec a2 Base64Alphabet then if strict_in_dec a3 Base64Alphabet then if strict_in_dec a4 Base64Alphabet then Base64Encoded rec else if Ascii.eqb a4 Base64Padding_special then match rec with | "" => STrue | String _ _ => SFalse end else SFalse else if Ascii.eqb a3 Base64Padding_special then if Ascii.eqb a4 Base64Padding_special then match rec with | "" => STrue | String _ _ => SFalse end else SFalse else SFalse else SFalse else SFalse)) with | left _ => match strict_in_dec a2 Base64Alphabet as s return (Box (if s then if strict_in_dec a3 Base64Alphabet then if strict_in_dec a4 Base64Alphabet then Base64Encoded rec else if Ascii.eqb a4 Base64Padding_special then match rec with | "" => STrue | String _ _ => SFalse end else SFalse else if Ascii.eqb a3 Base64Padding_special then if Ascii.eqb a4 Base64Padding_special then match rec with | "" => STrue | String _ _ => SFalse end else SFalse else SFalse else SFalse)) with | left _ => match strict_in_dec a3 Base64Alphabet as s return (Box (if s then if strict_in_dec a4 Base64Alphabet then Base64Encoded rec else if Ascii.eqb a4 Base64Padding_special then match rec with | "" => STrue | String _ _ => SFalse end else SFalse else if Ascii.eqb a3 Base64Padding_special then if Ascii.eqb a4 Base64Padding_special then match rec with | "" => STrue | String _ _ => SFalse end else SFalse else SFalse)) with | left _ => match strict_in_dec a4 Base64Alphabet as s return (Box (if s then Base64Encoded rec else if Ascii.eqb a4 Base64Padding_special then match rec with | "" => STrue | String _ _ => SFalse end else SFalse)) with | left _ => Hrec | right n => False_ind (Box (if Ascii.eqb a4 Base64Padding_special then match rec with | "" => STrue | String _ _ => SFalse end else SFalse)) (n Ha4) end | right n => False_ind (Box (if Ascii.eqb a3 Base64Padding_special then if Ascii.eqb a4 Base64Padding_special then match rec with | "" => STrue | String _ _ => SFalse end else SFalse else SFalse)) (n Ha3) end | right n => False_ind (Box SFalse) (n Ha2) end | right n => False_ind (Box SFalse) (n Ha1) end).
-      clearbody x.
+      set (x := match strict_in_dec a1 Base64Alphabet as s return (Box (if s then if strict_in_dec a2 Base64Alphabet then if strict_in_dec a3 Base64Alphabet then if strict_in_dec a4 Base64Alphabet then Base64Encoded rec else (if padding as p return (padding = p -> SProp) then fun Hpad0 : padding = true => if Ascii.eqb a4 (Base64Padding_special Hpad0) then match rec with | "" => STrue | String _ _ => SFalse end else SFalse else fun _ : padding = false => SFalse) eq_refl else (if padding as p return (padding = p -> SProp) then fun Hpad0 : padding = true => if Ascii.eqb a3 (Base64Padding_special Hpad0) then if Ascii.eqb a4 (Base64Padding_special Hpad0) then match rec with | "" => STrue | String _ _ => SFalse end else SFalse else SFalse else fun _ : padding = false => SFalse) eq_refl else SFalse else SFalse)) with | left _ => match strict_in_dec a2 Base64Alphabet as s return (Box (if s then if strict_in_dec a3 Base64Alphabet then if strict_in_dec a4 Base64Alphabet then Base64Encoded rec else (if padding as p return (padding = p -> SProp) then fun Hpad0 : padding = true => if Ascii.eqb a4 (Base64Padding_special Hpad0) then match rec with | "" => STrue | String _ _ => SFalse end else SFalse else fun _ : padding = false => SFalse) eq_refl else (if padding as p return (padding = p -> SProp) then fun Hpad0 : padding = true => if Ascii.eqb a3 (Base64Padding_special Hpad0) then if Ascii.eqb a4 (Base64Padding_special Hpad0) then match rec with | "" => STrue | String _ _ => SFalse end else SFalse else SFalse else fun _ : padding = false => SFalse) eq_refl else SFalse)) with | left _ => match strict_in_dec a3 Base64Alphabet as s return (Box (if s then if strict_in_dec a4 Base64Alphabet then Base64Encoded rec else (if padding as p return (padding = p -> SProp) then fun Hpad0 : padding = true => if Ascii.eqb a4 (Base64Padding_special Hpad0) then match rec with | "" => STrue | String _ _ => SFalse end else SFalse else fun _ : padding = false => SFalse) eq_refl else (if padding as p return (padding = p -> SProp) then fun Hpad0 : padding = true => if Ascii.eqb a3 (Base64Padding_special Hpad0) then if Ascii.eqb a4 (Base64Padding_special Hpad0) then match rec with | "" => STrue | String _ _ => SFalse end else SFalse else SFalse else fun _ : padding = false => SFalse) eq_refl)) with | left _ => match strict_in_dec a4 Base64Alphabet as s return (Box (if s then Base64Encoded rec else (if padding as p return (padding = p -> SProp) then fun Hpad0 : padding = true => if Ascii.eqb a4 (Base64Padding_special Hpad0) then match rec with | "" => STrue | String _ _ => SFalse end else SFalse else fun _ : padding = false => SFalse) eq_refl)) with | left _ => Hrec | right n => False_ind (Box ((if padding as p return (padding = p -> SProp) then fun Hpad0 : padding = true => if Ascii.eqb a4 (Base64Padding_special Hpad0) then match rec with | "" => STrue | String _ _ => SFalse end else SFalse else fun _ : padding = false => SFalse) eq_refl)) (n Ha4) end | right n => False_ind (Box ((if padding as p return (padding = p -> SProp) then fun Hpad0 : padding = true => if Ascii.eqb a3 (Base64Padding_special Hpad0) then if Ascii.eqb a4 (Base64Padding_special Hpad0) then match rec with | "" => STrue | String _ _ => SFalse end else SFalse else SFalse else fun _ : padding = false => SFalse) eq_refl)) (n Ha3) end | right n => False_ind (Box SFalse) (n Ha2) end | right n => False_ind (Box SFalse) (n Ha1) end); clearbody x.
       simpl.
       destruct strict_in_dec; intuition; eauto; try congruence.
       destruct strict_in_dec; intuition; eauto; try congruence.
@@ -335,15 +419,21 @@ Section Base64.
       repeat collapse_boxes.
       repeat find_rev_rew.
       repeat rewrite strict_invol; eauto.
-      Unshelve. all: eapply EqClass_Ascii.
+      set (x' := eq_ind false (fun e : bool => if e then False else True) I true); clearbody x';
+      simpl in *.
+      set (x'' := (fun Hpad0 : false = true => False_rec QuadSextetList (x' Hpad0))).
+      clearbody x''.
+      set (Z := QScons_all (p1, p2, p3, p4) (QuadSextetList_decode' Hpad rec x)); clearbody Z.
+      destruct padding; eauto; congruence.
   Qed. 
 
   Global Instance StrictEncodable_quadsextetlist_base64_string  
-      `{StrictEncodable Sextet Base64_Ascii} :
+      `{StrictEncodable Sextet Base64_Ascii} 
+      (Hpad : padding = true) :
       StrictEncodable QuadSextetList Base64_String := {
-    strict_encode := QuadSextetList_encode;
-    strict_decode := QuadSextetList_decode;
-    strict_invol := qsl_strict_invol
+    strict_encode := (QuadSextetList_encode Hpad);
+    strict_decode := (QuadSextetList_decode Hpad);
+    strict_invol := (qsl_strict_invol Hpad)
   }.
 
   Definition decode_string_base64 (s : string) : option Base64_String.
@@ -480,33 +570,206 @@ Section Base64.
   repeat rewrite strict_invol; eauto; rewrite IHa; eauto.
   Defined.
 
-  (* If you are wanting to convert strings to/from Base64 strings, this
-  is the typeclass instance you are wanting to use!!! *)
-  Global Instance StrictEncodable_string_base64_string 
-    `{StrictEncodable string QuadSextetList}
-    `{StrictEncodable QuadSextetList Base64_String}
+  Global Instance StrictEncodable_string_base64_string_pad 
+    (Hpad : padding = true)
     : StrictEncodable string Base64_String.
+    pose proof (StrictEncodable_string_quadsextetlist).
+    pose proof (StrictEncodable_quadsextetlist_base64_string Hpad).
     eapply Build_StrictEncodable with
       (strict_encode := fun s => strict_encode (strict_encode s))
       (strict_decode := fun s => strict_decode (strict_decode s)).
     intros.
     repeat rewrite strict_invol; eauto.
   Defined.
+    
+  Fixpoint string_to_base64_string_no_pad
+    `{StrictEncodable Sextet Base64_Ascii}
+    `{HE1 : StrictEncodable (Ascii.ascii * Ascii.ascii * Ascii.ascii) (Sextet * Sextet * Sextet * Sextet)}
+    `{HE2 : StrictEncodable (Ascii.ascii * Ascii.ascii) (Sextet * Sextet * Sextet)}
+    `{HE3 : StrictEncodable (Ascii.ascii) (Sextet * Sextet)}
+    (Hpad : padding = false)
+    (s : string)
+    : Base64_String.
+  destruct s as [| a1 [ | a2 [ | a3  s4 ]]].
+  - eapply (existT _ "" _).
+    Unshelve. simpl in *; eauto.
+  - pose proof (strict_encode a1) as [sx1 sx2].
+    destruct (strict_encode sx1) as [a1' Ha1'].
+    destruct (strict_encode sx2) as [a2' Ha2'].
+    eapply (existT _ (String a1' (String a2' "")) _).
+    Unshelve.  simpl in *; rewrite Hpad; eauto.
+    repeat destruct strict_in_dec; eauto;
+    collapse_boxes; try (exfalso; eauto).
+  - pose proof (strict_encode (a1, a2)) as [[sx1 sx2] sx3].
+    destruct (strict_encode sx1) as [a1' Ha1'].
+    destruct (strict_encode sx2) as [a2' Ha2'].
+    destruct (strict_encode sx3) as [a3' Ha3'].
+    eapply (existT _ (String a1' (String a2' (String a3' ""))) _).
+    Unshelve.  simpl in *; rewrite Hpad; eauto.
+    repeat destruct strict_in_dec; eauto;
+    collapse_boxes; try (exfalso; eauto).
+  - pose proof (strict_encode (a1, a2, a3)) as [[[sx1 sx2] sx3] sx4].
+    destruct (strict_encode sx1) as [a1' Ha1'].
+    destruct (strict_encode sx2) as [a2' Ha2'].
+    destruct (strict_encode sx3) as [a3' Ha3'].
+    destruct (strict_encode sx4) as [a4' Ha4'].
+    destruct (string_to_base64_string_no_pad _ _ _ _ Hpad s4) as [rec Hrec].
+    eapply (existT _ (String a1' (String a2' (String a3' (String a4' rec)))) _).
+    Unshelve. simpl in *.
+    repeat destruct strict_in_dec; try congruence.
+  Defined.
+  
+  Definition base64_string_to_string_no_pad' 
+    `{StrictEncodable Sextet Base64_Ascii}
+    `{HE1 : StrictEncodable (Ascii.ascii * Ascii.ascii * Ascii.ascii) (Sextet * Sextet * Sextet * Sextet)}
+    `{HE2 : StrictEncodable (Ascii.ascii * Ascii.ascii) (Sextet * Sextet * Sextet)}
+    `{HE3 : StrictEncodable (Ascii.ascii) (Sextet * Sextet)}
+    (Hpad : padding = false) 
+    : forall s : string, Box (Base64Encoded s) -> string.
+    refine (
+      fix F s HS : string :=
+      _
+    ).
+  destruct s as [| a1 [| a2 [| a3 [| a4 s4]]]].
+  - eapply "".
+  - simpl in *; box_simpl.
+  - simpl in *.
+    repeat destruct strict_in_dec; box_simpl.
+    set (sx1 := strict_decode (existT _ a1 b0)).
+    set (sx2 := strict_decode (existT _ a2 b1)).
+    set (s1 := strict_decode (sx1, sx2)).
+    eapply (String s1 EmptyString).
+  - simpl in *.
+    repeat destruct strict_in_dec; box_simpl.
+    set (sx1 := strict_decode (existT _ a1 b0)).
+    set (sx2 := strict_decode (existT _ a2 b1)).
+    set (sx3 := strict_decode (existT _ a3 b2)).
+    destruct (strict_decode (sx1, sx2, sx3)) as [s1 s2].
+    eapply (String s1 (String s2 EmptyString)).
+  - simpl in *.
+    repeat destruct strict_in_dec; box_simpl.
+    * 
+    set (sx1 := strict_decode (existT _ a1 b0)).
+    set (sx2 := strict_decode (existT _ a2 b1)).
+    set (sx3 := strict_decode (existT _ a3 b2)).
+    set (sx4 := strict_decode (existT _ a4 b3)).
+    destruct (strict_decode (sx1, sx2, sx3, sx4)) as [[s1 s2] s3].
+    set (rec := (F _ HS)).
+    eapply (String s1 (String s2 (String s3 rec))).
+    * set (y := fun Hpad : padding = true => if Ascii.eqb a4 (Base64Padding_special Hpad) then match s4 with | "" => STrue | String _ _ => SFalse end else SFalse) in *; clearbody y.
+      destruct padding; try congruence.
+    * set (y := fun Hpad : padding = true => if Ascii.eqb a3 (Base64Padding_special Hpad) then if Ascii.eqb a4 (Base64Padding_special Hpad) then match s4 with | "" => STrue | String _ _ => SFalse end else SFalse else SFalse) in *; clearbody y.
+      destruct padding; try congruence.
+  Defined.
+
+  Definition base64_string_to_string_no_pad 
+    `{StrictEncodable Sextet Base64_Ascii}
+    `{HE1 : StrictEncodable (Ascii.ascii * Ascii.ascii * Ascii.ascii) (Sextet * Sextet * Sextet * Sextet)}
+    `{HE2 : StrictEncodable (Ascii.ascii * Ascii.ascii) (Sextet * Sextet * Sextet)}
+    `{HE3 : StrictEncodable (Ascii.ascii) (Sextet * Sextet)}
+    (Hpad : padding = false) : Base64_String -> string.
+    intros.
+    destruct H0 as [s HS].
+    generalize dependent s.
+    eapply (base64_string_to_string_no_pad' Hpad).
+  Defined.
+  
+  Global Instance StrictEncodable_string_base64_string_no_pad 
+    `{StrictEncodable Sextet Base64_Ascii}
+    `{HE1 : StrictEncodable (Ascii.ascii * Ascii.ascii * Ascii.ascii) (Sextet * Sextet * Sextet * Sextet)}
+    `{HE2 : StrictEncodable (Ascii.ascii * Ascii.ascii) (Sextet * Sextet * Sextet)}
+    `{HE3 : StrictEncodable (Ascii.ascii) (Sextet * Sextet)}
+    (Hpad : padding = false)
+    : StrictEncodable string Base64_String.
+  refine ({|
+    strict_encode := (string_to_base64_string_no_pad Hpad);
+    strict_decode := (base64_string_to_string_no_pad Hpad);
+    strict_invol := _
+  |}).
+    induction a using string_ind3; try (simpl in *; eauto; fail).
+    - simpl; repeat break_match; 
+      unfold base64_string_to_string_no_pad;
+      simpl in *.
+      repeat destruct strict_in_dec; try congruence;
+      repeat collapse_boxes;
+      repeat find_rev_rew; repeat rewrite strict_invol; eauto;
+      repeat find_rev_rew; repeat rewrite strict_invol; eauto.
+    - simpl; repeat break_match; 
+      unfold base64_string_to_string_no_pad;
+      simpl in *.
+      repeat destruct strict_in_dec; try congruence;
+      repeat collapse_boxes;
+      repeat find_rev_rew; repeat rewrite strict_invol; eauto;
+      repeat find_rev_rew; repeat rewrite strict_invol; eauto.
+    - simpl; repeat break_match; 
+      unfold base64_string_to_string_no_pad;
+      subst; simpl in *; subst;
+      repeat collapse_boxes; box_simpl;
+      repeat (destruct strict_in_dec; collapse_boxes; box_simpl;
+        intuition; eauto; try congruence);
+      repeat find_rev_rew; repeat rewrite strict_invol; eauto;
+      repeat find_rev_rew; repeat rewrite strict_invol; eauto.
+      unfold Base64Padding_special in *;
+      simpl in *.
+      set (f1 := fun HS : Box SFalse => match HS with | {| unbox := unbox |} => SFalse_rec (fun _ : SFalse => string) unbox end).
+      clearbody f1.
+      clear Heqb4.
+
+      repeat destruct strict_in_dec; intuition;
+      eauto; try congruence;
+      collapse_boxes; box_simpl;
+      repeat find_rev_rew; repeat rewrite strict_invol; eauto;
+      repeat find_rev_rew; repeat rewrite strict_invol; eauto.
+  Defined.
+
+  (* If you are wanting to convert strings to/from Base64 strings, this
+  is the typeclass instance you are wanting to use!!! *)
+  Global Instance StrictEncodable_string_base64_string 
+    : StrictEncodable string Base64_String :=
+  match padding as p return padding = p -> _ with
+  | true => fun Hpad => StrictEncodable_string_base64_string_pad Hpad
+  | false => fun Hpad => StrictEncodable_string_base64_string_no_pad Hpad
+  end eq_refl.
   
 End Base64.
 
 
 Section Base64_Testing.
-  Local Instance StandardStringEncoder : StrictEncodable string (Base64_String Base64Standard) :=
-    @StrictEncodable_string_base64_string Base64Standard _ _.
+  Set Typeclasses Debug.
+  Local Instance StandardPaddedStringEncoder : StrictEncodable string (Base64_String Base64Standard true).
+    typeclasses eauto.
+  Defined.
+  Local Instance StandardNoPadStringEncoder : StrictEncodable string (Base64_String Base64Standard false).
+    typeclasses eauto.
+  Defined.
 
   Definition test_str := "Hello, World!".
   Definition newline := String (Ascii.Ascii false true false true false false false false) EmptyString.
   Definition test_str_2 := String.concat "" ["a"; newline; "a"].
 
   Definition base64_test_str := "SGVsbG8sIFdvcmxkIQ==".
+  Definition base64_test_str_no_pad := "SGVsbG8sIFdvcmxkIQ".
   Definition base64_encoded_base64_test_str 
-    : Box (Base64Encoded Base64Standard base64_test_str).
+    : Box (Base64Encoded Base64Standard true base64_test_str).
+    erewrite <- Base64Encoded_bool_iff.
+      (* Base64Encoded_bool Base64Standard base64_test_str = true. *)
+    unfold base64_test_str.
+    unfold Base64Encoded_bool.
+    repeat (destruct strict_in_dec; 
+      [ match goal with
+      | H : Box _ |- _ => clear H
+      end | 
+        match goal with
+        | H : ~ Box _ |- _ => 
+          try (exfalso; eapply H; clear H;
+            vm_compute; destruct (DecEq_from_EqClass Ascii.ascii);
+            repeat (destruct decEq as [ H' | ? ]; [ inv H' | ]); eauto;
+            exfalso; eauto; fail)
+        end ]; eauto).
+  Qed.
+  Compute @strict_encode _ _ StandardNoPadStringEncoder test_str.
+  Definition base64_encoded_base64_test_str_no_pad
+    : Box (Base64Encoded Base64Standard false base64_test_str_no_pad).
     erewrite <- Base64Encoded_bool_iff.
       (* Base64Encoded_bool Base64Standard base64_test_str = true. *)
     unfold base64_test_str.
