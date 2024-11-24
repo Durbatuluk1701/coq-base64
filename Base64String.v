@@ -766,7 +766,6 @@ Section Base64_Testing.
             exfalso; eauto; fail)
         end ]; eauto).
   Qed.
-  Compute @strict_encode _ _ StandardNoPadStringEncoder test_str.
   Definition base64_encoded_base64_test_str_no_pad
     : Box (Base64Encoded Base64Standard false base64_test_str_no_pad).
     erewrite <- Base64Encoded_bool_iff.
