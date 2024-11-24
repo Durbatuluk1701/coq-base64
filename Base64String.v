@@ -735,7 +735,6 @@ End Base64.
 
 
 Section Base64_Testing.
-  Set Typeclasses Debug.
   Local Instance StandardPaddedStringEncoder : StrictEncodable string (Base64_String Base64Standard true).
     typeclasses eauto.
   Defined.
@@ -772,7 +771,7 @@ Section Base64_Testing.
     : Box (Base64Encoded Base64Standard false base64_test_str_no_pad).
     erewrite <- Base64Encoded_bool_iff.
       (* Base64Encoded_bool Base64Standard base64_test_str = true. *)
-    unfold base64_test_str.
+    unfold base64_test_str_no_pad.
     unfold Base64Encoded_bool.
     repeat (destruct strict_in_dec; 
       [ match goal with
@@ -787,15 +786,18 @@ Section Base64_Testing.
         end ]; eauto).
   Qed.
 
-  Definition base64_test_str_base64_type : Base64_String Base64Standard :=
+  Definition base64_test_str_base64_type : Base64_String Base64Standard true :=
     existT _ base64_test_str base64_encoded_base64_test_str.
 
   (* NOTE: We are using the projection out of this, since that is the real string value.
   
   Technically, since we have all the involutivity proofs completed as part of the StrictEncodable, they should be strictly equivalent. However this takes an IMMENSE amount of time to verify, so it is just simpler to complete it this way instead *)
   Example encode_test_1 : 
-    projT1 (strict_encode test_str) = projT1 (base64_test_str_base64_type).
+    projT1 (@strict_encode _ _ StandardPaddedStringEncoder test_str) = projT1 (base64_test_str_base64_type).
   Proof.
+    unfold base64_test_str_base64_type.
+    simpl.
+    unfold base64_test_str.
     reflexivity.
   Qed.
 
