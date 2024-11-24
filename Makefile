@@ -35,3 +35,10 @@ clean:	$(COQMK)
 	rm $(COQMK) $(COQMK).conf
 
 .PHONY:	all clean force
+
+test: 
+	cd extracted && \
+	ocamlc -c base64.mli && \
+	ocamlc -c base64.ml && \
+	ocamlc -c test_base64.ml && \
+	ocamlc -o test_base64 base64.cmo test_base64.cmo 
