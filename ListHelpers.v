@@ -146,6 +146,20 @@ Fixpoint index_of_safe {A : Type} `{EqClass A} (s : A) (l : list A)
     * eapply (S (index_of_safe _ _ s l HIn)).
 Defined.
 
+Theorem index_of_impl_index_of_safe : forall A `{EqClass A} (l : list A) s v H,
+  index_of s l = Some v ->
+  index_of_safe s l H = v.
+Proof.
+  induction l; simpl in *; intuition.
+  destruct decEq; subst; eauto.
+  - rewrite eqb_refl in *; congruence.
+  - destruct eqb eqn:E; try congruence.
+    * rewrite eqb_eq in *; congruence.
+    * destruct index_of eqn:?; try congruence.
+      inv H1.
+      eapply IHl in Heqo; eauto.
+Qed.
+
 Lemma index_of_nth_lt_length : forall A `{EqClass A} (l : list A) v HL,
   index_of_safe v l HL < List.length l.
 Proof.

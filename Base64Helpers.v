@@ -214,6 +214,16 @@ Definition Sextet_from_nat (n : nat) : option Sextet :=
   | _ => None
   end.
 
+Lemma Sextet_from_nat_impl_Sextet_from_nat_safe : forall n v H,
+  Sextet_from_nat n = Some v ->
+  Sextet_from_nat_safe n H = v.
+Proof.
+  induction n; simpl in *; intuition.
+  - inv H0; eauto.
+  - do 64 (destruct n; [ simple congruence 1 | ]).
+    congruence.
+Qed.
+
 Ltac dec_encode :=
   let v := fresh "v" in
   intros v;

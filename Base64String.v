@@ -800,6 +800,117 @@ Section Base64_Testing.
     reflexivity.
   Qed.
 
+  Definition oww_str := "Oww".
+
+  Lemma oww_str_base64_encoded : 
+    Box (Base64Encoded Base64Standard false oww_str).
+  Proof.
+    unfold oww_str.
+    vm_compute.
+    repeat destruct strict_in_dec.
+    - unfold strict_In in *; 
+      repeat (destruct decEq; [ simple congruence 1 | ]); box_simpl;
+      eauto.
+    - exfalso; eapply n;
+      unfold strict_In in *;
+      repeat (repeat (destruct decEq; [ simple congruence 1 | ]);
+      repeat (destruct decEq; [ | simple congruence 1 ])).
+      congruence.
+    - exfalso; eapply n;
+      unfold strict_In in *;
+      repeat (repeat (destruct decEq; [ simple congruence 1 | ]);
+      repeat (destruct decEq; [ | simple congruence 1 ])).
+      destruct n.
+      eauto.
+  Qed.
+
+  Definition base64_test_str_oww : Base64_String Base64Standard false :=
+    existT _ oww_str oww_str_base64_encoded.
+  
+  Lemma base64_test_str_oww_invol : 
+    strict_decode base64_test_str_oww = 
+    (String (Ascii.Ascii true true false true true true false false) (String (Ascii.Ascii false false true true false false false false) EmptyString)).
+  Proof.
+    unfold base64_test_str_oww.
+    unfold strict_decode, StandardNoPadStringEncoder, StrictEncodable_string_base64_string,
+    StrictEncodable_string_base64_string_no_pad,
+    base64_string_to_string_no_pad.
+    unfold oww_str.
+    set (z := oww_str_base64_encoded).
+    clearbody z.
+    unfold oww_str in *.
+    unfold Base64Encoded in z.
+    unfold base64_string_to_string_no_pad'.
+    set (x := strict_in_dec (Ascii.Ascii true true true true false false true false) (Base64Alphabet Base64Standard)) in *.
+    set (x' := strict_in_dec (Ascii.Ascii true true true false true true true false) (Base64Alphabet Base64Standard)) in *. 
+    set (x'' := fun HS1 : Box SFalse => match HS1 with | {| unbox := unbox |} => SFalse_rec (fun _ : SFalse => string) unbox end) in *.
+    clearbody x''.
+    set (y := if x' then STrue else SFalse) in *.
+    set (y' := if x' then y else SFalse) in *.
+    clearbody x.
+    clearbody x'.
+    destruct x, x'; box_simpl.
+    - subst y y'.
+      clear x''.
+      set (F := (fun a : Ascii.ascii => Box (strict_In a (Base64Alphabet Base64Standard)))) in *.
+      unfold strict_decode,
+        StrictEncodable_two_ascii_three_sextet,
+        Encodable_sextet_base64_ascii,
+        packet_decode.
+      unfold projT1, projT2.
+      set (a1 := (eq_ind (Datatypes.length (Base64Alphabet Base64Standard)) (fun n : nat => index_of_safe (Ascii.Ascii true true true false true true true false) (Base64Alphabet Base64Standard) (box_proj b0) < n) (index_of_nth_lt_length Ascii.ascii (Base64Alphabet Base64Standard) (Ascii.Ascii true true true false true true true false) (box_proj b0)) 64 (Base64AlphabetLengthCorrect Base64Standard))).
+      clearbody a1.
+      set (a2 := (eq_ind (Datatypes.length (Base64Alphabet Base64Standard)) (fun n : nat => index_of_safe (Ascii.Ascii true true true true false false true false) (Base64Alphabet Base64Standard) (box_proj b) < n))).
+      clearbody a2.
+      set (a3 := (a2 (index_of_nth_lt_length Ascii.ascii (Base64Alphabet Base64Standard) (Ascii.Ascii true true true true false false true false) (box_proj b)) 64 (Base64AlphabetLengthCorrect Base64Standard))).
+      clearbody a3.
+      clear a2.
+      clear F.
+      destruct b, b0.
+      unfold box_proj in *.
+      set (i1 := index_of_safe (Ascii.Ascii true true true false true true true false) (Base64Alphabet Base64Standard) unbox0) in *.
+      set (i2 := index_of_safe (Ascii.Ascii true true true true false false true false) (Base64Alphabet Base64Standard) unbox) in *.
+      set (B := Base64Alphabet Base64Standard) in *.
+      unfold Base64Alphabet in B.
+      vm_compute in B.
+      assert (index_of_safe (Ascii.Ascii true true true false true true true false) B unbox0 = 48). {
+        clear -B.
+        subst B.
+        eapply index_of_impl_index_of_safe.
+        clear unbox0.
+        simpl; eauto.
+      }
+      assert (index_of_safe (Ascii.Ascii true true true true false false true false) B unbox = 14). {
+        clear -B.
+        subst B.
+        eapply index_of_impl_index_of_safe.
+        simpl; eauto.
+      }
+      assert (Sextet_from_nat_safe i1 a1 = sextet true true false false false false). {
+        subst i1.
+        eapply Sextet_from_nat_impl_Sextet_from_nat_safe.
+        rewrite H.
+        simpl.
+        eauto.
+      }
+      assert (Sextet_from_nat_safe i2 a3 = sextet false false true true true false). {
+        subst i2.
+        eapply Sextet_from_nat_impl_Sextet_from_nat_safe.
+        rewrite H0.
+        simpl.
+        eauto.
+      }
+      rewrite H1, H2.
+      eauto.
+    - exfalso.
+      eapply n.
+      clear b z x'' y y' n.
+      simpl.
+      repeat (repeat (destruct decEq; [ simple congruence 1 | ]);
+      repeat (destruct decEq; [ | simple congruence 1 ])).
+      eauto.
+  Qed.
+
 End Base64_Testing.
 
 
