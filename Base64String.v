@@ -2,8 +2,6 @@
   This is an implementation of the Base64 encoding and decoding algorithm in Coq.
 
   Specifically, this will abide by RFC4648, which is the (current) standard for Base64 encoding and decoding.
-
-  However, there is one main divergence from the standard, which is that we will REQUIRE padding to be used in the encoding/decoding.
 *)
 Require Import ClassesAndLtac ListHelpers Base64Helpers.
 Open Scope string_scope.
