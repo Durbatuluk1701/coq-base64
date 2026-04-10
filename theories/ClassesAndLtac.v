@@ -20,6 +20,7 @@ Ltac box_simpl :=
   repeat match goal with
   | [ H : Box SFalse |- _ ] => destruct H; intuition
   | [ H : Box STrue |- _ ] => clear H
+  | [ |- Box STrue ] => exact (box sI)
   | [ H : SFalse |- _ ] => destruct H
   end.
 

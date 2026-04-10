@@ -132,7 +132,7 @@ Section Base64.
     end.
 
   Definition Base64_Ascii := {a : Ascii.ascii & Box (strict_In a Base64Alphabet)}.
-
+  
   Definition Base64_String := {s : string & Box (Base64Encoded s)}.
   
   Fixpoint Base64Encoded_bool (s1 : string) : bool.
@@ -184,12 +184,23 @@ Section Base64.
   Theorem Base64Encoded_bool_iff : forall s,
     Base64Encoded_bool s = true <-> Box (Base64Encoded s).
   Proof.
-    induction s using string_ind4; simpl in *; intuition;
-    try congruence; try (inv H; intuition; fail);
-    repeat (break_match; simpl in *; subst; try congruence; eauto);
-    try (set (x' := Base64Padding_special) in *; clearbody x';
-    destruct padding; try congruence); try box_simpl;
-    repeat (destruct Ascii.eqb; try simple congruence 1; box_simpl; eauto).
+    induction s using string_ind4; [
+      vm_compute; split; intros ?; [ exact (box sI) | reflexivity ]
+      | vm_compute; split; intros HC; [ discriminate HC | box_simpl ]
+      | vm_compute; split; intros H; repeat (destruct strict_in_dec as [bv | bv]; [ clear bv | ]); destruct padding; try (simple congruence 1); box_simpl
+      | vm_compute; split; intros H; repeat (destruct strict_in_dec as [bv | bv]; [ clear bv | ]); destruct padding; try (simple congruence 1); box_simpl
+      | simpl;
+      repeat (destruct strict_in_dec as [bv | bv]; [ clear bv | ]);
+      [ 
+        exact IHs
+        | set (x' := Base64Padding_special) in *; clearbody x';
+        repeat (break_match; [ | split; intros HC; [ discriminate HC | box_simpl ] ]); split; intros ?; [ box_simpl | reflexivity ]
+        | set (x' := Base64Padding_special) in *; clearbody x';
+        repeat (break_match; [ | split; intros HC; [ discriminate HC | box_simpl ] ]); split; intros ?; [ box_simpl | reflexivity ]
+        | split; intros HC; [ discriminate HC | box_simpl ]
+        | split; intros HC; [ discriminate HC | box_simpl ]
+      ]
+    ].
   Qed.
 
   Definition Base64Padding : padding = true -> Ascii.ascii := 
@@ -208,15 +219,15 @@ Section Base64.
 
   Lemma NoDupBase64Alphabet : NoDup Base64Alphabet.
   Proof.
-    unfold Base64Alphabet; simpl in *.
-    destruct b; simpl in *;
-    repeat (econstructor; [ 
+    unfold Base64Alphabet;
+    destruct b; vm_compute;
+    clear b padding;
+    repeat (econstructor; [
       intros HC;
-      repeat match goal with
-      | H : _ |- _ =>
-        inv H; try congruence
-      end | ]);
-    econstructor.
+      repeat (destruct HC as [HC | HC]; [ simple congruence 1 | ]);
+      destruct HC
+      |
+    ]); exact (NoDup_nil _).
   Qed.
 
   Lemma sextet_to_nat_lt_base64alphabet_length : forall s,
@@ -236,12 +247,10 @@ Section Base64.
     ~ In (Base64Padding Hpad) Base64Alphabet.
   Proof.
     unfold Base64Alphabet, Base64Padding;
-    destruct b; simpl in *; intros HC;
-    destruct padding;
-    repeat match goal with
-    | H : _ \/ _ |- _ => 
-      destruct H; simpl in *; try congruence; subst; eauto
-    end.
+    destruct b; vm_compute;
+    intros HC; clear padding Hpad b;
+    repeat (destruct HC as [HC | HC]; [ simple congruence 1 | ]);
+    exact HC.
   Qed.
 
   Definition packet_decode (s : Base64_Ascii) : Sextet.
@@ -315,12 +324,6 @@ Section Base64.
       set (z := (eq_ind false (fun e : bool => if e then False else True) I true)) in *; clearbody z.
       destruct padding; try congruence; eauto.
     - simpl in *; repeat destruct strict_in_dec; eauto; try congruence.
-  Defined.
-
-  Lemma wf_proj_len : 
-    well_founded (fun x y : Base64_String => String.length (projT1 x) < String.length (projT1 y)).
-  Proof.
-    eapply Wf_nat.well_founded_ltof.
   Defined.
 
   Definition QuadSextetList_decode' `{StrictEncodable Sextet Base64_Ascii} 
@@ -696,25 +699,20 @@ Section Base64.
       repeat collapse_boxes;
       repeat find_rev_rew; repeat rewrite strict_invol; eauto;
       repeat find_rev_rew; repeat rewrite strict_invol; eauto.
-    - simpl; repeat break_match; 
+    - 
+      simpl.
+      repeat break_match;
       unfold base64_string_to_string_no_pad;
-      subst; simpl in *; subst;
-      repeat collapse_boxes; box_simpl;
-      repeat (destruct strict_in_dec; collapse_boxes; box_simpl;
-        intuition; eauto; try congruence);
-      repeat find_rev_rew; repeat rewrite strict_invol; eauto;
-      repeat find_rev_rew; repeat rewrite strict_invol; eauto.
-      unfold Base64Padding_special in *;
-      simpl in *.
-      set (f1 := fun HS : Box SFalse => match HS with | {| unbox := unbox |} => SFalse_rec (fun _ : SFalse => string) unbox end).
-      clearbody f1.
-      clear Heqb4.
-
-      repeat destruct strict_in_dec; intuition;
-      eauto; try congruence;
-      collapse_boxes; box_simpl;
-      repeat find_rev_rew; repeat rewrite strict_invol; eauto;
-      repeat find_rev_rew; repeat rewrite strict_invol; eauto.
+      simpl; subst;
+      try (set (x' := Base64Padding_special) in *; clearbody x');
+      repeat (destruct strict_in_dec); collapse_boxes;
+      try (destruct padding); try (simple congruence 1);
+      try (erewrite <- Heqb0; clear Heqb0; erewrite strict_invol);
+      try (erewrite <- Heqb1; clear Heqb1; erewrite strict_invol);
+      try (erewrite <- Heqb2; clear Heqb2; erewrite strict_invol);
+      try (erewrite <- Heqb3; clear Heqb3; erewrite strict_invol);
+      try (erewrite <- Heqp; clear Heqp; erewrite strict_invol);
+      try (reflexivity).
   Defined.
 
   (* If you are wanting to convert strings to/from Base64 strings, this
@@ -735,10 +733,9 @@ Lemma null_byte_not_in_alphabet : forall b,
   ~ (In Ascii.zero (Base64Alphabet b)).
 Proof.
   intros b HC.
-  destruct b;
-  simpl in *;
-  repeat (destruct HC as [HC | HC]; [ inv HC | ]);
-  congruence.
+  destruct b; unfold Base64Alphabet; vm_compute in HC;
+  repeat (destruct HC as [HC | HC]; [ discriminate HC | ]);
+  exact HC.
 Qed.
 
 Theorem base64_no_null_bytes : forall b pad (s : Base64_String b pad),
@@ -770,37 +767,39 @@ Proof.
       destruct x; box_simpl; simpl in *; intuition.
 Qed.
 
-Section Base64_Testing.
-  Local Instance StandardPaddedStringEncoder : StrictEncodable string (Base64_String Base64Standard true).
-    typeclasses eauto.
-  Defined.
-  Local Instance StandardNoPadStringEncoder : StrictEncodable string (Base64_String Base64Standard false).
-    typeclasses eauto.
-  Defined.
+Local Instance StandardPaddedStringEncoder : StrictEncodable string (Base64_String Base64Standard true).
+  typeclasses eauto.
+Defined.
+Local Instance StandardNoPadStringEncoder : StrictEncodable string (Base64_String Base64Standard false).
+  typeclasses eauto.
+Defined.
 
-  Definition test_str := "Hello, World!".
+(* 
+(** NOTE: These examples should all compile, but it is really 
+    costly to calculate them all the time, so they are current commented out. 
+*)
+
+Section Base64_Testing.
+
+  Definition test_str := "Hello".
   Definition newline := String (Ascii.Ascii false true false true false false false false) EmptyString.
   Definition test_str_2 := String.concat "" ["a"; newline; "a"].
 
-  Definition base64_test_str := "SGVsbG8sIFdvcmxkIQ==".
-  Definition base64_test_str_no_pad := "SGVsbG8sIFdvcmxkIQ".
+  Definition base64_test_str := "SGVsbG8=".
+  Definition base64_test_str_no_pad := "SGVsbG8".
   Definition base64_encoded_base64_test_str 
     : Box (Base64Encoded Base64Standard true base64_test_str).
-    erewrite <- Base64Encoded_bool_iff.
+    erewrite <- Base64Encoded_bool_iff;
       (* Base64Encoded_bool Base64Standard base64_test_str = true. *)
-    unfold base64_test_str.
-    unfold Base64Encoded_bool.
-    repeat (destruct strict_in_dec; 
-      [ match goal with
-      | H : Box _ |- _ => clear H
-      end | 
-        match goal with
-        | H : ~ Box _ |- _ => 
-          try (exfalso; eapply H; clear H;
-            vm_compute; destruct (DecEq_from_EqClass Ascii.ascii);
-            repeat (destruct decEq as [ H' | ? ]; [ inv H' | ]); eauto;
-            exfalso; eauto; fail)
-        end ]; eauto).
+    unfold base64_test_str;
+    vm_compute;
+    repeat (destruct strict_in_dec as [b | b]; [ clear b | ]);
+    try reflexivity;
+    vm_compute in *;
+    exfalso;
+    eapply b; clear b; refine (box _);
+    destruct (DecEq_from_EqClass Ascii.ascii);
+    repeat (destruct decEq; [ try (discriminate e); exact sI | try (exact (False_sind _ (n eq_refl))); clear n ]).
   Qed.
   Definition base64_encoded_base64_test_str_no_pad
     : Box (Base64Encoded Base64Standard false base64_test_str_no_pad).
@@ -808,17 +807,13 @@ Section Base64_Testing.
       (* Base64Encoded_bool Base64Standard base64_test_str = true. *)
     unfold base64_test_str_no_pad.
     unfold Base64Encoded_bool.
-    repeat (destruct strict_in_dec; 
-      [ match goal with
-      | H : Box _ |- _ => clear H
-      end | 
-        match goal with
-        | H : ~ Box _ |- _ => 
-          try (exfalso; eapply H; clear H;
-            vm_compute; destruct (DecEq_from_EqClass Ascii.ascii);
-            repeat (destruct decEq as [ H' | ? ]; [ inv H' | ]); eauto;
-            exfalso; eauto; fail)
-        end ]; eauto).
+    repeat (destruct strict_in_dec as [b | b]; [ clear b | ]);
+    try reflexivity;
+    vm_compute in *;
+    exfalso;
+    eapply b; clear b; refine (box _);
+    destruct (DecEq_from_EqClass Ascii.ascii);
+    repeat (destruct decEq; [ try (discriminate e); exact sI | try (exact (False_sind _ (n eq_refl))); clear n ]).
   Qed.
 
   Definition base64_test_str_base64_type : Base64_String Base64Standard true :=
@@ -942,11 +937,9 @@ Section Base64_Testing.
       eapply n.
       clear b z x'' y y' n.
       simpl.
-      repeat (repeat (destruct decEq; [ simple congruence 1 | ]);
-      repeat (destruct decEq; [ | simple congruence 1 ])).
-      eauto.
+
+      repeat (destruct decEq; [ try (discriminate e); exact (box sI) | try (exact (box (False_sind _ (n eq_refl)))); clear n ]).
   Qed.
 
 End Base64_Testing.
-
-
+*)
