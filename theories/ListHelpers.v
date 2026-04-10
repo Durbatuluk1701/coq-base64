@@ -1,4 +1,4 @@
-Require Import ClassesAndLtac.
+From base64 Require Import ClassesAndLtac.
 
 Fixpoint strict_In {A : Type} `{EqClass A} (x : A) (l : list A) : SProp :=
   match l with

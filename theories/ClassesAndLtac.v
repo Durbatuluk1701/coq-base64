@@ -1,4 +1,4 @@
-Require Export String List StrictProp.
+From Stdlib Require Export String List StrictProp.
 Export ListNotations.
 
 (* Option Notation *)

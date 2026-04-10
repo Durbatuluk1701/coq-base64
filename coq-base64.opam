@@ -1,0 +1,31 @@
+opam-version: "2.0"
+maintainer: "Will Thomas <30wthomas@ku.edu>"
+version: "dev"
+
+homepage: "https://github.com/durbatuluk1701/coq-base64"
+dev-repo: "git+https://github.com/durbatuluk1701/coq-base64.git"
+bug-reports: "https://github.com/durbatuluk1701/coq-base64/issues"
+license: "MIT"
+
+synopsis: "Base64 encoding and decoding"
+description: """
+Base64 encoding and decoding for Coq.
+"""
+
+build: [
+  ["dune" "build" "-p" name "-j" jobs]
+]
+depends: [
+  "dune" {>= "2.0"}
+  "coq" {>= "8.18"}
+]
+
+tags: [
+  "category:Computer Science/Data Encoding"
+  "keyword:base64"
+  "keyword:encoding"
+  "keyword:decoding"
+]
+authors: [
+  "Will Thomas <30wthomas@ku.edu>"
+]

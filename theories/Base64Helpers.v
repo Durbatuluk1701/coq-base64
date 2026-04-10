@@ -1,4 +1,5 @@
-Require Import ClassesAndLtac.
+From base64 Require Import ClassesAndLtac.
+From Stdlib Require Import Lia.
 
 Inductive Sextet := sextet (_ _ _ _ _ _ : bool).
 
@@ -247,7 +248,6 @@ Proof.
   intros n H.
   do 64 (destruct n; [ reflexivity | ]).
 
-  Require Import Lia.
   lia.
 Qed.
 

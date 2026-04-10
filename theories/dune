@@ -1,0 +1,5 @@
+(coq.theory
+ (name base64)
+ (package coq-base64)
+ (theories Stdlib)
+ (synopsis "Base64 encoding and decoding"))

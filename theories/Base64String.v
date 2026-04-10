@@ -3,7 +3,7 @@
 
   Specifically, this will abide by RFC4648, which is the (current) standard for Base64 encoding and decoding.
 *)
-Require Import ClassesAndLtac ListHelpers Base64Helpers.
+From base64 Require Import ClassesAndLtac ListHelpers Base64Helpers.
 Open Scope string_scope.
 
 Inductive Base64Options :=
@@ -41,10 +41,7 @@ Section Base64.
 
   Definition Base64Padding_special : padding = true -> Ascii.ascii. 
     intros; destruct padding; try congruence.
-    set (x := string_get_ascii_safe 0);
-    eapply x.
-    eapply (existT) with (x := "=").
-    econstructor.
+    refine (string_get_ascii_safe 0 (existT _ "=" (le_n _))).
   Defined.
   
   Fixpoint Base64Encoded (s1 : string) : SProp :=
@@ -731,6 +728,47 @@ Section Base64.
   
 End Base64.
 
+Definition no_null_bytes (s : string) : Prop :=
+  ~ (In Ascii.zero (list_ascii_of_string s)).
+
+Lemma null_byte_not_in_alphabet : forall b,
+  ~ (In Ascii.zero (Base64Alphabet b)).
+Proof.
+  intros b HC.
+  destruct b;
+  simpl in *;
+  repeat (destruct HC as [HC | HC]; [ inv HC | ]);
+  congruence.
+Qed.
+
+Theorem base64_no_null_bytes : forall b pad (s : Base64_String b pad),
+  no_null_bytes (projT1 s).
+Proof.
+  induction s; simpl in *.
+  induction x using string_ind4; unfold no_null_bytes; simpl in *;
+  intros HC; intuition; subst; eauto; box_simpl;
+  try (repeat destruct strict_in_dec; box_simpl;
+  eapply null_byte_not_in_alphabet;
+  erewrite <- strict_In_iff_In; eauto; fail).
+  - repeat destruct strict_in_dec; box_simpl;
+    try (eapply null_byte_not_in_alphabet;
+    erewrite <- strict_In_iff_In; eauto; fail);
+    destruct pad; simpl in *; box_simpl.
+  - repeat destruct strict_in_dec; box_simpl;
+    try (eapply null_byte_not_in_alphabet;
+    erewrite <- strict_In_iff_In; eauto; fail);
+    destruct pad; simpl in *; box_simpl.
+    destruct Ascii.eqb; box_simpl.
+  - repeat destruct strict_in_dec; box_simpl;
+    try (eapply null_byte_not_in_alphabet;
+    erewrite <- strict_In_iff_In; eauto; fail);
+    destruct pad; simpl in *; box_simpl; intuition; eauto.
+    * destruct Ascii.eqb; box_simpl.
+      destruct x; box_simpl; simpl in *; intuition.
+    * destruct Ascii.eqb; box_simpl.
+      destruct Ascii.eqb; box_simpl.
+      destruct x; box_simpl; simpl in *; intuition.
+Qed.
 
 Section Base64_Testing.
   Local Instance StandardPaddedStringEncoder : StrictEncodable string (Base64_String Base64Standard true).

@@ -1,0 +1,10 @@
+(coq.extraction
+ (prelude Base64Extraction)
+ (extracted_modules base64)
+ (theories Stdlib base64))
+
+(executable
+ (name test_base64)
+ (public_name base64)
+ (package coq-base64)
+ (modules base64 test_base64))

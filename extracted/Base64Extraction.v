@@ -1,5 +1,5 @@
-Require Import Base64String.
-Require Import Extraction.
+From base64 Require Import Base64String.
+From Corelib Require Import Extraction.
 
 (*
   Base64 Extraction
@@ -11,9 +11,9 @@ Require Import Extraction.
 
 Extraction Language OCaml.
 
-Require Import ExtrOcamlBasic.
-Require Import ExtrOcamlString.
+From Stdlib Require Import ExtrOcamlBasic.
+From Stdlib Require Import ExtrOcamlString.
 
-Set Extraction Output Directory "extracted".
+Set Extraction Output Directory ".".
 
 Extraction "base64.ml" StandardPaddedStringEncoder.
