@@ -3,8 +3,14 @@
  (extracted_modules base64)
  (theories Stdlib base64))
 
+(library
+ (name coq_base64_v0)
+ (modules base64)
+ (wrapped false))
+
 (executable
  (name test_base64)
  (public_name base64)
  (package coq-base64)
- (modules base64 test_base64))
+ (modules test_base64)
+ (libraries coq_base64_v0))

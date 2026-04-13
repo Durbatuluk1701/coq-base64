@@ -10,16 +10,39 @@ Fixpoint strict_In {A : Type} `{EqClass A} (x : A) (l : list A) : SProp :=
     end
   end.
 
-Theorem strict_in_dec {A : Type} `{EqClass A} (x : A) (l : list A) : 
-  {Box (strict_In x l)} + {~ Box (strict_In x l)}.
-Proof.
-  induction l; simpl in *.
-  - right; intros HC; inv HC; intuition.
-  - destruct IHl.
-    * (* strict_In x l *)
-      destruct decEq; intuition; eauto.
-    * (* ~ strict_In x l *)
-      destruct decEq; intuition; eauto.
+Fixpoint strict_in_dec {A : Type} `{HeqA : EqClass A} 
+    (x : A) (l : list A) 
+    : {Box (strict_In x l)} + {~ Box (strict_In x l)}.
+refine (
+  match l with
+  | nil => right (fun '(box HC) => SFalse_ind _ HC)
+  | h :: t => 
+    match decEq x h as HD return decEq x h = HD -> _ with
+    | left Heq => fun HD => _
+    | right Hneq => fun HD => _
+    end eq_refl
+  end
+).
+- (* x = h *)
+  left.
+  econstructor.
+  simpl.
+  erewrite HD.
+  exact sI.
+- (* x <> h *)
+  destruct (strict_in_dec A HeqA x t) as [in_rec | n_in_rec].
+  * (* x \in t *)
+    left.
+    econstructor.
+    simpl.
+    erewrite HD.
+    exact (unbox in_rec).
+  * (* x \notin t *)
+    right.
+    intros HC.
+    simpl in HC.
+    erewrite HD in HC.
+    exact (n_in_rec HC).
 Qed.
 
 Theorem strict_In_iff_In : forall A `{EqClass A} l x,

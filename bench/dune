@@ -1,0 +1,6 @@
+(executable
+ (name bench)
+ (modules bench)
+ (flags
+  (:standard -w -26))
+ (libraries coq_base64_v0 unix))
